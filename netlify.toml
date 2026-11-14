@@ -1,0 +1,23 @@
+# Configuración para publicar en Netlify (se detecta sola al conectar el repositorio).
+[build]
+  command = "npm run build"
+  publish = "dist"
+
+[build.environment]
+  NODE_VERSION = "20"
+
+# La app usa rutas con # → cualquier dirección abre index.html
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
+
+[[headers]]
+  for = "/sw.js"
+  [headers.values]
+    Cache-Control = "no-cache"
+
+[[headers]]
+  for = "/*"
+  [headers.values]
+    Permissions-Policy = "geolocation=(self), camera=(self), publickey-credentials-get=(self), publickey-credentials-create=(self)"

@@ -1,0 +1,61 @@
+rules_version = '2';
+// Reglas de seguridad de Envia2 Express. Pégalas en: Firebase → Firestore Database → Reglas → Publicar.
+// IMPORTANTE: cambia tu_correo@gmail.com por el/los correos de administrador (igual que VITE_ADMIN_EMAILS).
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() { return request.auth != null; }
+    function isAdmin() { return signedIn() && request.auth.token.email in ['tu_correo@gmail.com']; }
+    function profile() { return get(/databases/$(database)/documents/users/$(request.auth.uid)).data; }
+    function isDriver() { return signedIn() && profile().role == 'driver' && profile().approved == true; }
+    function shipment(id) { return get(/databases/$(database)/documents/shipments/$(id)).data; }
+    function involved(s) { return s.clientId == request.auth.uid || s.recipientUid == request.auth.uid || s.driverId == request.auth.uid; }
+
+    match /users/{uid} {
+      allow read: if signedIn() && (request.auth.uid == uid || isAdmin());
+      allow create: if signedIn() && request.auth.uid == uid && (
+        isAdmin() ||
+        (request.resource.data.role == 'client' && request.resource.data.approved == true) ||
+        (request.resource.data.role == 'driver' && request.resource.data.approved == false));
+      // El usuario edita su perfil pero no puede cambiar su rol ni aprobarse solo.
+      allow update: if isAdmin() || (request.auth.uid == uid
+        && request.resource.data.role == resource.data.role
+        && request.resource.data.approved == resource.data.approved);
+      allow delete: if isAdmin();
+    }
+
+    match /shipments/{id} {
+      allow read: if isAdmin() || isDriver() || (signedIn() && involved(resource.data));
+      allow create: if signedIn() && (isAdmin() || request.resource.data.clientId == request.auth.uid);
+      allow update: if isAdmin() || isDriver() || (signedIn() && involved(resource.data))
+        // Vincular un envío con el enlace de WhatsApp (consultora / destinatario)
+        || (signedIn() && resource.data.recipientUid == null
+            && request.resource.data.recipientUid == request.auth.uid
+            && request.resource.data.claimKey == resource.data.claimToken
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['recipientUid', 'claimKey', 'updatedAt']));
+      allow delete: if isAdmin();
+    }
+
+    // Fotos y firmas (separadas para que la app cargue rápido)
+    match /evidence/{id} {
+      allow read, write: if isAdmin() || isDriver() || (signedIn() && involved(shipment(id)));
+    }
+
+    // Copia pública (seguimiento + comprobante) para clientes SIN la app.
+    // Se lee solo con el enlace exacto (clave larga e imposible de adivinar); no se puede listar.
+    match /public/{token} {
+      allow get: if true;
+      allow list: if false;
+      allow write: if isAdmin() || isDriver();
+    }
+
+    match /messages/{id} {
+      allow read: if signedIn() && (request.auth.uid in resource.data.participants || isAdmin());
+      allow create: if signedIn() && request.resource.data.fromId == request.auth.uid && request.auth.uid in request.resource.data.participants;
+    }
+
+    match /notifications/{id} {
+      allow read, update, delete: if signedIn() && resource.data.userId == request.auth.uid;
+      allow create: if signedIn();
+    }
+  }
+}
