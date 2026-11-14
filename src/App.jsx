@@ -1,7 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { useStore, useSession, useSync, logout, markRead, claimShipment, CLOUD } from './lib/store';
+import { useStore, useSession, useSync, markRead, claimShipment, CLOUD, getViewRole, ROLE_LABEL } from './lib/store';
+import AppLock from './components/AppLock';
+import { ProfilePage, SettingsPage, AddressesPage, Avatar } from './views/Account';
+import DriverApply from './views/DriverApply';
+import { INTENT_KEY } from './views/Login';
 import { BUSINESS_NAME, APP_VERSION } from './lib/config';
-import Logo, { LogoMark } from './components/Logo';
+import { LogoMark } from './components/Logo';
 import Login from './views/Login';
 import ClientApp from './views/ClientApp';
 import DriverApp from './views/DriverApp';
@@ -110,7 +114,9 @@ export default function App() {
   const me = users.find((u) => u.id === session?.userId);
   const [claim, setClaim] = useState(pendingClaim);
   const [view, go] = useView();
-  const { toasts, unread, all, open } = useNotifications(me, go);
+  const role = getViewRole(me);
+  const meView = me ? { ...me, role } : null; // perfil activo (admin puede ver como repartidor o cliente)
+  const { toasts, unread, all, open } = useNotifications(meView, go);
   const [bell, setBell] = useState(false);
   const [notifPerm, setNotifPerm] = useState(typeof Notification !== 'undefined' ? Notification.permission : 'denied');
 
@@ -125,31 +131,44 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [me?.id, claim]);
 
+  // Entró por "Soy repartidor": llevarlo a su solicitud / código
+  useEffect(() => {
+    if (!me) return;
+    let intent = null;
+    try {
+      intent = sessionStorage.getItem(INTENT_KEY);
+      sessionStorage.removeItem(INTENT_KEY);
+    } catch {
+      /* sin almacenamiento */
+    }
+    if (intent === 'driver' && me.role !== 'driver' && me.role !== 'admin') go({ name: 'driver-apply' });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [me?.id]);
+
   // Página pública para clientes sin la app (no requiere iniciar sesión)
   if (view.name === 't' && view.id) return <PublicPage token={view.id} />;
   if (!sync.ready) return <Splash />;
   if (!session || session.needsProfile) return <Login session={session} claim={!!claim} />;
   if (!me) return <Splash text="Cargando tu cuenta…" />;
 
-  const roleName = { client: 'Cliente', driver: 'Repartidor', admin: 'Administrador' }[me.role];
+  const shared = ['profile', 'settings', 'addresses', 'driver-apply'].includes(view.name);
 
   return (
+    <AppLock me={me}>
     <div className="app">
       <header className="topbar">
-        <button className="brand" onClick={() => go({ name: 'home' })}>
-          <Logo size={34} /> <small>{roleName}</small>
+        <button className="brand" onClick={() => go({ name: 'home' })} aria-label="Inicio">
+          <img src="./wordmark.png" alt="Envia2 express" className="wordmark" />
         </button>
-        <div className="row gap">
-          {notifPerm === 'default' && (
-            <button className="btn ghost sm hide-sm" onClick={() => Notification.requestPermission().then(setNotifPerm)}>
-              🔔 Activar avisos
-            </button>
-          )}
+        <button className="role-chip" onClick={() => go({ name: 'settings' })} title="Cambiar de perfil">
+          {ROLE_LABEL[role]}
+        </button>
+        <div className="row gap top-actions">
           <button className="btn ghost icon bell" onClick={() => setBell(!bell)} aria-label="Notificaciones">
             🔔{!!unread.length && <span className="count">{unread.length}</span>}
           </button>
-          <button className="btn ghost sm" onClick={logout}>
-            Salir
+          <button className="avatar-btn" onClick={() => go({ name: 'profile' })} aria-label="Mi perfil">
+            <Avatar me={me} size={36} />
           </button>
         </div>
         {bell && (
@@ -183,11 +202,17 @@ export default function App() {
 
       <SyncBanner sync={sync} />
       <main>
-        {me.role === 'client' && <ClientApp me={me} view={view} go={go} />}
-        {me.role === 'driver' && <DriverApp me={me} view={view} go={go} />}
-        {me.role === 'admin' && <AdminApp me={me} />}
+        {view.name === 'profile' && <ProfilePage me={me} go={go} />}
+        {view.name === 'settings' && <SettingsPage me={me} go={go} />}
+        {view.name === 'addresses' && <AddressesPage me={me} />}
+        {view.name === 'driver-apply' && <DriverApply me={me} go={go} />}
+        {!shared && role === 'client' && <ClientApp me={meView} view={view} go={go} />}
+        {!shared && role === 'driver' && <DriverApp me={meView} view={view} go={go} />}
+        {!shared && role === 'admin' && <AdminApp me={meView} view={view} />}
         <div className="app-version">{BUSINESS_NAME} · versión {APP_VERSION}</div>
       </main>
+
+      <BottomNav view={view} go={go} />
 
       <div className="toasts">
         {toasts.map((t) => (
@@ -197,6 +222,31 @@ export default function App() {
         ))}
       </div>
     </div>
+    </AppLock>
+  );
+}
+
+const NAV = [
+  ['home', '🏠', 'Inicio'],
+  ['orders', '📦', 'Pedidos'],
+  ['history', '🕑', 'Historial'],
+  ['addresses', '📍', 'Direcciones'],
+  ['settings', '⚙️', 'Configuración'],
+];
+const NAV_OF = { new: 'home', quote: 'home', track: 'orders', job: 'orders', profile: 'settings', 'driver-apply': 'settings' };
+
+/** Barra de menú inferior */
+function BottomNav({ view, go }) {
+  const cur = NAV_OF[view.name] || view.name;
+  return (
+    <nav className="bottom-nav" aria-label="Menú principal">
+      {NAV.map(([k, icon, label]) => (
+        <button key={k} className={cur === k ? 'on' : ''} onClick={() => go({ name: k })} aria-current={cur === k ? 'page' : undefined}>
+          <span className="nav-icon">{icon}</span>
+          <span className="nav-label">{label}</span>
+        </button>
+      ))}
+    </nav>
   );
 }
 

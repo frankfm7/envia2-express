@@ -3,7 +3,7 @@
 //  - Firestore con caché sin conexión: si no hay señal, todo (firmas, fotos,
 //    estados) se guarda en el celular y se sube solo cuando vuelve internet.
 import { initializeApp } from 'firebase/app';
-import { getAuth, GoogleAuthProvider, signInWithPopup, signInWithRedirect, getRedirectResult, onAuthStateChanged, signOut } from 'firebase/auth';
+import { getAuth, GoogleAuthProvider, signInWithPopup, signInWithRedirect, getRedirectResult, onAuthStateChanged, signOut, RecaptchaVerifier, signInWithPhoneNumber } from 'firebase/auth';
 import {
   initializeFirestore,
   persistentLocalCache,
@@ -127,14 +127,14 @@ export function createCloudBackend(ctx) {
     if (me.role === 'admin') {
       listen('users', 'users', collection(db, 'users'));
       listen('ships', 'shipments', query(S, orderBy('createdAt', 'desc'), limit(500)));
-    } else if (me.role === 'driver') {
-      if (me.approved) {
+    } else {
+      // Todos (también repartidores) pueden pedir envíos como clientes
+      listen('sent', 'shipments', query(S, where('clientId', '==', uid)));
+      listen('recv', 'shipments', query(S, where('recipientUid', '==', uid)));
+      if (me.role === 'driver' && me.approved) {
         listen('pending', 'shipments', query(S, where('status', '==', 'pending')));
         listen('mine', 'shipments', query(S, where('driverId', '==', uid)));
       }
-    } else {
-      listen('sent', 'shipments', query(S, where('clientId', '==', uid)));
-      listen('recv', 'shipments', query(S, where('recipientUid', '==', uid)));
     }
     listen('msgs', 'messages', query(collection(db, 'messages'), where('participants', 'array-contains', uid)));
     listen('notifs', 'notifications', query(collection(db, 'notifications'), where('userId', '==', uid)));
@@ -151,7 +151,7 @@ export function createCloudBackend(ctx) {
       return setSync({ ready: true });
     }
     userUid = u.uid;
-    const base = { userId: u.uid, email: u.email, name: u.displayName, photo: u.photoURL, isAdminEmail: ADMIN_EMAILS.includes((u.email || '').toLowerCase()) };
+    const base = { userId: u.uid, email: u.email, name: u.displayName, photo: u.photoURL, phone: u.phoneNumber || '', isAdminEmail: ADMIN_EMAILS.includes((u.email || '').toLowerCase()) };
     // El perfil se lee de la caché local primero (funciona sin señal).
     unsubs.push(
       onSnapshot(
@@ -239,6 +239,33 @@ export function createCloudBackend(ctx) {
       } catch (e) {
         if (['auth/popup-blocked', 'auth/operation-not-supported-in-this-environment'].includes(e.code)) await signInWithRedirect(auth, provider);
         else if (e.code !== 'auth/popup-closed-by-user' && e.code !== 'auth/cancelled-popup-request') throw e;
+      }
+    },
+    // ── Entrar con número de celular (código por SMS) ──
+    async loginPhoneStart(phoneE164, buttonId) {
+      if (!window.__recaptcha) window.__recaptcha = new RecaptchaVerifier(auth, buttonId, { size: 'invisible' });
+      try {
+        this._confirm = await signInWithPhoneNumber(auth, phoneE164, window.__recaptcha);
+      } catch (e) {
+        window.__recaptcha?.clear?.();
+        window.__recaptcha = null;
+        throw e;
+      }
+    },
+    async loginPhoneConfirm(code) {
+      if (!this._confirm) throw new Error('Primero pide el código');
+      await this._confirm.confirm(code);
+    },
+    getOne: async (col, id) => {
+      const d = await getDoc(ref(col, id)).catch(() => null);
+      return d?.exists() ? { ...dec(d.data()), id } : null;
+    },
+    /** El repartidor activa su cuenta con el código que le dio el administrador (las reglas lo verifican) */
+    async activateDriver(uid, code) {
+      try {
+        await updateDoc(ref('users', uid), { role: 'driver', approved: true, authCode: code, driverStatus: 'approved', online: true, updatedAt: Date.now() });
+      } catch {
+        throw new Error('Código incorrecto');
       }
     },
     async logout() {

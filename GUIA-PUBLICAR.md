@@ -8,7 +8,7 @@ Orden recomendado:
                                      4. Base de datos (Firebase) ◄─┘  (opcional al inicio: sin ella funciona en modo demo)
 ```
 
-> **Versión:** la app es la **versión 1.0.0** y se queda así hasta que se decida un cambio grande. Los ZIP que recibes se numeran aparte (`envia2-express-v3.zip`, `-v3`…) solo para saber cuál es el más nuevo. Ver `CHANGELOG.md`.
+> **Versión:** la app es la **versión 1.0.0** y se queda así hasta que se decida un cambio grande. Los ZIP que recibes se numeran aparte (`envia2-express-v4.zip`, `-v3`…) solo para saber cuál es el más nuevo. Ver `CHANGELOG.md`.
 
 ---
 
@@ -27,7 +27,7 @@ git --version
 
 Si ambos muestran un número de versión, está listo.
 
-4. Descomprime **envia2-express-v3.zip**, por ejemplo en el Escritorio. Queda la carpeta `envia2-express`.
+4. Descomprime **envia2-express-v4.zip**, por ejemplo en el Escritorio. Queda la carpeta `envia2-express`.
 
 ---
 
@@ -105,7 +105,7 @@ cd C:\Users\TU_USUARIO\Desktop\envia2-express
 git add .
 ```
 ```bash
-git commit -m "Actualizacion v3: iconos redondeados y cotizacion del cliente"
+git commit -m "Actualizacion v4: menu inferior, perfil, celular, repartidores con codigo"
 ```
 ```bash
 git push
@@ -156,8 +156,11 @@ La app **ya trae lista la conexión a Firebase** (Google): plan gratis sin tarje
    - `projectId` → `VITE_FIREBASE_PROJECT_ID`
    - `appId` → `VITE_FIREBASE_APP_ID`
 3. *Compilación → Authentication → Comenzar → Sign-in method → Google → Habilitar → Guardar*.
+   - **Entrar con número de celular:** en *Sign-in method* → **Teléfono** → *Habilitar* → Guardar. Luego en *Authentication → Settings → Política de regiones de SMS* permite **Bolivia**.
+   - Firebase puede pedirte activar la facturación (plan *Blaze*) para enviar SMS reales; cada SMS tiene un costo pequeño. Para **probar gratis**, agrega números de prueba en *Sign-in method → Teléfono → Números de teléfono para pruebas* (ej. `+591 70000000` con código `123456`). Si no quieres pagar SMS, deja solo Google: la app funciona igual.
 4. *Compilación → Firestore Database → Crear base de datos* → ubicación `southamerica-east1` (São Paulo, la más cercana) → **modo producción**.
 5. Firestore → pestaña **Reglas** → pega el contenido de `firestore.rules`, cambia `tu_correo@gmail.com` por **tu Gmail** → **Publicar**.
+   > ⚠️ Cada vez que recibas un ZIP que diga "reglas actualizadas" en el CHANGELOG, vuelve a pegar y publicar `firestore.rules` (la v4 las cambió).
 6. *Authentication → Settings → Dominios autorizados* → **Agregar dominio** → `envia2-express.netlify.app` (tu dominio de Netlify, sin `https://`).
 
 ### 4.2 Poner las claves en Netlify
@@ -184,17 +187,19 @@ Luego *Deploys → Trigger deploy → Deploy site* para que tome las claves.
 
 ## PASO 5 · Primer uso (con Firebase)
 
-1. Abre tu enlace **con tu Gmail de administrador** → *Continuar con Google* → completa nombre y celular → entras al **Panel**.
-2. **Repartidores**: les mandas el enlace, entran con su Google y eligen *Repartidor*. Aparecen en tu panel → botón **Aprobar**.
-3. **Cajas de catálogo** (Yanbal, Ésika, L'Bel, Cyzone…):
-   1. Panel → pestaña **💄 Cajas de catálogo** → pon la dirección de tu almacén.
-   2. Registra las cajas una por una o **pega la lista desde Excel** (Nombre · Celular · Marca · Pedido · Cajas · Monto).
-   3. Toca **Avisar por WhatsApp** en cada consultora: le llega "tu caja llegó" con un enlace.
-   4. Si ella responde por WhatsApp o llamada (sin app), tú tocas **Confirmar por ella** y eliges lugar y hora. Si prefiere, abre el enlace, entra con Google y lo elige ella misma.
-   5. La caja pasa a los repartidores con la cita. Cuando el repartidor está a 1 km, ella recibe el aviso; ella puede tocar **"Ya estoy en el punto"** o **"Voy en camino"** y el repartidor la ve en el mapa 🙋.
-4. **Instalar en el celular**: abre el enlace en Chrome → menú ⋮ → **Agregar a pantalla principal** (en iPhone: Safari → Compartir → *Agregar a inicio*).
-
----
+1. Abre tu enlace **con tu Gmail de administrador** → *Continuar con Google* → nombre y celular → entras como **Administrador**.
+2. **Cambiar de perfil sin salir:** toca la etiqueta *Administrador* (arriba) o *Configuración → Cambiar de perfil* y elige **Repartidor** o **Cliente**. Como cliente puedes hacer tus propios pedidos; como repartidor, aceptarlos y entregarlos.
+3. **Menú inferior:** 🏠 Inicio · 📦 Pedidos · 🕑 Historial · 📍 Direcciones · ⚙️ Configuración. Arriba a la derecha, tu **foto** abre tu perfil.
+4. **Clientes:** entran con Google o su número de celular, y listo (solo nombre y celular la primera vez).
+5. **Repartidores nuevos:**
+   1. En la pantalla de entrada eligen **Soy repartidor** y entran con Google o celular.
+   2. Llenan la solicitud: foto, carnet (número y fotos de los dos lados), vehículo (marca, color, placa y foto), licencia opcional y **2 números de confianza**.
+   3. Tú la ves en **Inicio → 🛵 Repartidores → Revisar** → **Aprobar y generar código** → **Enviar código por WhatsApp** (o se lo das en persona).
+   4. El repartidor entra a *Configuración → Trabajar como repartidor → Ingresar código* y su cuenta se activa. Sin el código correcto no puede activarse (las reglas de Firebase lo verifican).
+   5. Puedes **bloquear** o desbloquear a un repartidor en esa misma pestaña.
+6. **Seguridad (opcional, cada usuario):** *Configuración → Seguridad* → código de 4 dígitos, patrón o huella/Face ID. Se pide al abrir la app y al volver después de 1 minuto. Si alguien lo olvida, toca "¿Lo olvidaste? Cerrar sesión" y vuelve a entrar con Google o celular.
+7. **Cajas de catálogo** (Yanbal, Ésika, L'Bel, Cyzone…): *Inicio → 💄 Catálogo* (igual que antes).
+8. **Instalar en el celular:** Chrome → menú ⋮ → *Instalar aplicación* (iPhone: Safari → Compartir → *Agregar a inicio*).
 
 ---
 

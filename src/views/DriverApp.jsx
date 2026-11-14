@@ -158,26 +158,27 @@ export default function DriverApp({ me, view, go }) {
 
   if (view.name === 'job') {
     const s = shipments.find((x) => x.id === view.id && x.driverId === me.id);
-    if (s) return <Job s={s} me={me} back={() => go({ name: 'home' })} tracker={tracker} />;
+    if (s) return <Job s={s} me={me} back={() => go({ name: 'orders' })} tracker={tracker} />;
   }
-  return <DriverHome me={me} shipments={shipments} jobs={jobs} go={go} tracker={tracker} />;
+  const section = ['orders', 'history'].includes(view.name) ? view.name : 'home';
+  return <DriverHome me={me} shipments={shipments} jobs={jobs} go={go} tracker={tracker} section={section} />;
 }
 
-function DriverHome({ me, shipments, jobs, go, tracker }) {
+function DriverHome({ me, shipments, jobs, go, tracker, section }) {
   if (!me.approved)
     return (
       <div className="page">
         <div className="card empty-state">
           <div style={{ fontSize: 56 }}>⏳</div>
-          <h3>Tu cuenta de repartidor está en revisión</h3>
-          <p className="muted">El administrador debe aprobarte desde su panel. Cuando lo haga, verás aquí los envíos disponibles.</p>
+          <h3>Tu cuenta de repartidor está pausada</h3>
+          <p className="muted">El administrador la bloqueó temporalmente. Comunícate con él para reactivarla.</p>
         </div>
       </div>
     );
-  return <DriverHomeInner me={me} shipments={shipments} jobs={jobs} go={go} tracker={tracker} />;
+  return <DriverHomeInner me={me} shipments={shipments} jobs={jobs} go={go} tracker={tracker} section={section} />;
 }
 
-function DriverHomeInner({ me, shipments, jobs, go, tracker }) {
+function DriverHomeInner({ me, shipments, jobs, go, tracker, section = 'home' }) {
   const sync = useSync();
   const [here, setHere] = useState(null);
   const outbox = useMemo(
@@ -215,6 +216,10 @@ function DriverHomeInner({ me, shipments, jobs, go, tracker }) {
 
   return (
     <div className="page">
+      {section === 'history' && <h2>🕑 Historial de entregas</h2>}
+      {section === 'orders' && <h2>📦 Pedidos</h2>}
+      {section === 'home' && (
+        <>
       <div className="card online-card">
         <div>
           <h2>Hola, {me.name.split(' ')[0]} 🛵</h2>
@@ -295,17 +300,34 @@ function DriverHomeInner({ me, shipments, jobs, go, tracker }) {
       </div>
 
       <TariffCard forDriver />
+        </>
+      )}
 
-      {!!jobs.length && <h3 className="section-title">Mis entregas activas</h3>}
+      {section !== 'history' && !!jobs.length && <h3 className="section-title">Mis entregas activas</h3>}
+      {section !== 'history' && (
       <div className="list">
         {jobs.map((s) => (
           <JobCard key={s.id} s={s} onOpen={() => go({ name: 'job', id: s.id })} />
         ))}
       </div>
+      )}
 
+      {section === 'home' && me.online && (
+        <button className="btn primary block lg" onClick={() => go({ name: 'orders' })}>
+          📦 Ver envíos disponibles ({available.length})
+        </button>
+      )}
+
+      {section === 'orders' && (
+        <>
       <h3 className="section-title">Envíos disponibles {me.online ? `(${available.length})` : ''}</h3>
       {!me.online ? (
-        <div className="card empty">Conéctate para ver y aceptar envíos.</div>
+        <div className="card empty">
+          <p>Estás desconectado. Conéctate para ver y aceptar envíos.</p>
+          <button className="btn success" onClick={() => updateUser(me.id, { online: true })}>
+            🟢 Conectarme
+          </button>
+        </div>
       ) : !available.length ? (
         <div className="card empty">
           <div className="pulse inline" /> Esperando nuevos envíos…
@@ -361,11 +383,15 @@ function DriverHomeInner({ me, shipments, jobs, go, tracker }) {
         </div>
       )}
 
-      {!!done.length && (
+        </>
+      )}
+
+      {section === 'history' && !done.length && <div className="card empty">Aún no tienes entregas terminadas.</div>}
+      {section === 'history' && !!done.length && (
         <>
-          <h3 className="section-title">Entregados</h3>
+          <h3 className="section-title">Entregados ({done.length})</h3>
           <div className="list">
-            {done.slice(0, 15).map((s) => (
+            {[...done].sort((a, b) => b.updatedAt - a.updatedAt).map((s) => (
               <JobCard key={s.id} s={s} onOpen={() => go({ name: 'job', id: s.id })} />
             ))}
           </div>

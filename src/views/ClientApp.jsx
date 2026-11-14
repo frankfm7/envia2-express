@@ -44,63 +44,100 @@ export default function ClientApp({ me, view, go }) {
     );
   if (view.name === 'track') {
     const s = mine.find((x) => x.id === view.id);
-    if (s) return <Track s={s} me={me} back={() => go({ name: 'home' })} />;
+    if (s) return <Track s={s} me={me} back={() => go({ name: 'orders' })} />;
   }
 
   const toConfirm = mine.filter((s) => s.status === 'awaiting_confirmation' && s.recipientUid === me.id);
   const active = mine.filter((s) => !toConfirm.includes(s) && (['pending', 'awaiting_confirmation'].includes(s.status) || ACTIVE.includes(s.status)));
   const past = mine.filter((s) => !active.includes(s));
 
+  const section = view.name === 'orders' ? 'orders' : view.name === 'history' ? 'history' : 'home';
+  const open = (sh) => go({ name: 'track', id: sh.id });
+  const List = ({ items, highlight }) => (
+    <div className="list">
+      {items.map((sh) => (
+        <ShipmentCard key={sh.id} s={sh} onOpen={() => open(sh)} highlight={highlight} />
+      ))}
+    </div>
+  );
+
+  if (section === 'history')
+    return (
+      <div className="page">
+        <h2>🕑 Historial</h2>
+        {!past.length ? <div className="card empty">Aún no tienes envíos terminados.</div> : <List items={past} />}
+      </div>
+    );
+
+  if (section === 'orders')
+    return (
+      <div className="page">
+        <div className="row between wrap gap">
+          <h2>📦 Mis pedidos</h2>
+          <button className="btn primary" onClick={() => go({ name: 'new' })}>
+            + Nuevo envío
+          </button>
+        </div>
+        {!!toConfirm.length && (
+          <>
+            <h3 className="section-title">¡Llegaron tus cajas! Confirma dónde y cuándo</h3>
+            <List items={toConfirm} highlight />
+          </>
+        )}
+        {!active.length && !toConfirm.length ? <div className="card empty">No tienes pedidos en curso.</div> : <List items={active} />}
+      </div>
+    );
+
   return (
     <div className="page">
       <div className="hello">
         <div>
           <h2>Hola, {me.name.split(' ')[0]} 👋</h2>
-          <p className="muted">¿Qué caja enviamos hoy?</p>
-        </div>
-        <div className="row gap wrap">
-          <button className="btn lg" onClick={() => go({ name: 'quote' })}>
-            💲 ¿Cuánto me cuesta?
-          </button>
-          <button className="btn primary lg" onClick={() => go({ name: 'new' })}>
-            + Nuevo envío
-          </button>
+          <p className="muted">¿Qué enviamos hoy?</p>
         </div>
       </div>
-
-      {!mine.length && (
-        <div className="card empty-state">
-          <div style={{ fontSize: 56 }}>📦</div>
-          <h3>Aún no tienes envíos</h3>
-          <p className="muted">Crea tu primer envío: elige origen y destino, tamaño de caja y listo. Verás al repartidor en el mapa en tiempo real.</p>
-          <button className="btn primary" onClick={() => go({ name: 'new' })}>
-            Crear envío
-          </button>
-        </div>
-      )}
+      <div className="home-actions">
+        <button className="home-action primary" onClick={() => go({ name: 'new' })}>
+          <span>📦</span>
+          <b>Nuevo envío</b>
+          <small>De A a B o mandado con compra</small>
+        </button>
+        <button className="home-action" onClick={() => go({ name: 'quote' })}>
+          <span>💲</span>
+          <b>¿Cuánto me cuesta?</b>
+          <small>Cotiza antes de pedir</small>
+        </button>
+      </div>
 
       {!!toConfirm.length && (
         <>
           <h3 className="section-title">📦 ¡Llegaron tus cajas! Confirma dónde y cuándo</h3>
-          <div className="list">
-            {toConfirm.map((s) => (
-              <ShipmentCard key={s.id} s={s} onOpen={() => go({ name: 'track', id: s.id })} highlight />
-            ))}
-          </div>
+          <List items={toConfirm} highlight />
         </>
       )}
-      {!!active.length && <h3 className="section-title">En curso</h3>}
-      <div className="list">
-        {active.map((s) => (
-          <ShipmentCard key={s.id} s={s} onOpen={() => go({ name: 'track', id: s.id })} />
-        ))}
-      </div>
-      {!!past.length && <h3 className="section-title">Historial</h3>}
-      <div className="list">
-        {past.map((s) => (
-          <ShipmentCard key={s.id} s={s} onOpen={() => go({ name: 'track', id: s.id })} />
-        ))}
-      </div>
+      {!!active.length && (
+        <>
+          <h3 className="section-title">En curso</h3>
+          <List items={active.slice(0, 3)} />
+          {active.length > 3 && (
+            <button className="btn ghost block" onClick={() => go({ name: 'orders' })}>
+              Ver todos mis pedidos ({active.length})
+            </button>
+          )}
+        </>
+      )}
+      {!mine.length && (
+        <div className="card empty-state">
+          <div style={{ fontSize: 56 }}>📦</div>
+          <h3>Aún no tienes envíos</h3>
+          <p className="muted">Cotiza o crea tu primer envío. Verás al repartidor en el mapa en tiempo real.</p>
+        </div>
+      )}
+      {!!past.length && (
+        <button className="btn ghost block" onClick={() => go({ name: 'history' })}>
+          🕑 Ver historial ({past.length})
+        </button>
+      )}
     </div>
   );
 }
@@ -170,7 +207,7 @@ function Track({ s, me, back }) {
     <div className="page track">
       <div className="page-head">
         <button className="btn ghost" onClick={back}>
-          ← Mis envíos
+          ← Mis pedidos
         </button>
         <h2>{s.code}</h2>
         <StatusBadge status={s.status} />

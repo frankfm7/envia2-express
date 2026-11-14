@@ -6,6 +6,18 @@
 
 ---
 
+## Entrega v4 (ZIP) — 15 nov 2026 · app versión 1.0.0 · ⚠️ reglas de Firebase actualizadas
+
+- **Menú inferior**: Inicio · Pedidos · Historial · Direcciones · Configuración (para cliente, repartidor y administrador).
+- **Encabezado**: las letras "Envia2 express" del logo (sacadas de tu logo, fondo transparente, `public/wordmark.png`) sobre azul de la marca; a la derecha la **foto de Google** (o inicial) → abre el **Perfil**.
+- **Cambiar de perfil sin cerrar sesión**: el administrador puede ver la app como Repartidor o Cliente (así también hace y entrega pedidos); un repartidor puede pasar a Cliente.
+- **Entrada**: "Soy cliente" / "Soy repartidor"; con **Google** o **número de celular** (código por SMS de Firebase). Clientes: solo nombre y celular.
+- **Repartidores con solicitud y código de ingreso**: foto, carnet (número + fotos), domicilio, vehículo (marca, color, placa, foto), licencia, 2 números de confianza → el administrador revisa, aprueba y genera un **código de 6 dígitos** (se envía por WhatsApp) → el repartidor lo ingresa y se activa. También se puede rechazar con motivo y bloquear/desbloquear.
+- **Seguridad opcional**: bloqueo con código, patrón o huella/Face ID al abrir la app o al volver después de 1 minuto.
+- **Direcciones guardadas** (Casa, Trabajo…) que aparecen como atajos ⭐ al pedir.
+- **Perfil**: cambiar foto, nombre y celular.
+- Reglas de Firebase nuevas (`firestore.rules`): el repartidor no puede aprobarse solo; sus documentos solo los ve el administrador; los códigos solo el administrador.
+
 ## Entrega v3 (ZIP) — 14 nov 2026 · app versión 1.0.0
 
 - **Íconos redondeados con el logo completo**: ya no se ve un cuadrado pequeño adentro ni difuminado. El fondo azul y las líneas de velocidad del propio logo se extienden hasta el borde, así el teléfono puede redondearlo o volverlo círculo sin cortar el repartidor, el texto "Envia" ni el "2".

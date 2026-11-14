@@ -5,40 +5,49 @@ import { StatusBadge, Modal, Timeline, ContactBar } from '../components/Common';
 import { useStore, STATUS, ACTIVE, exportBackup, importBackup, resetAll, updateUser, CLOUD } from '../lib/store';
 import CatalogBoxes from './CatalogBoxes';
 import Quote from './Quote';
+import DriverAdmin from './DriverAdmin';
 import { fmtDate } from '../lib/geo';
 import { money, SIZES } from '../lib/config';
 
-export default function AdminApp({ me }) {
+export default function AdminApp({ me, view }) {
   const [tab, setTab] = useState('panel');
+  const { users } = useStore();
+  const pendingApps = users.filter((u) => u.driverStatus === 'pending').length;
+  if (view?.name === 'orders') return <div className="page"><Dashboard mode="orders" /></div>;
+  if (view?.name === 'history') return <div className="page"><Dashboard mode="history" /></div>;
   return (
     <div className="page">
-      <div className="tabs big">
+      <div className="tabs big scroll-x">
         <button className={tab === 'panel' ? 'on' : ''} onClick={() => setTab('panel')}>
           📊 Panel
         </button>
+        <button className={tab === 'drivers' ? 'on' : ''} onClick={() => setTab('drivers')}>
+          🛵 Repartidores {pendingApps > 0 && <span className="count-inline">{pendingApps}</span>}
+        </button>
         <button className={tab === 'catalog' ? 'on' : ''} onClick={() => setTab('catalog')}>
-          💄 Cajas de catálogo
+          💄 Catálogo
         </button>
         <button className={tab === 'quote' ? 'on' : ''} onClick={() => setTab('quote')}>
           💲 Tarifas
         </button>
       </div>
-      {tab === 'panel' ? <Dashboard /> : tab === 'catalog' ? <CatalogBoxes me={me} /> : <Quote onBack={() => setTab('panel')} />}
+      {tab === 'panel' ? <Dashboard mode="panel" /> : tab === 'drivers' ? <DriverAdmin /> : tab === 'catalog' ? <CatalogBoxes me={me} /> : <Quote onBack={() => setTab('panel')} />}
     </div>
   );
 }
 
-function Dashboard() {
+function Dashboard({ mode = 'panel' }) {
   const { shipments, users } = useStore();
   const [q, setQ] = useState('');
-  const [status, setStatus] = useState('all');
+  const [status, setStatus] = useState(mode === 'history' ? 'done' : mode === 'orders' ? 'open' : 'all');
   const [open, setOpen] = useState(null);
 
   const list = useMemo(() => {
     const t = q.toLowerCase();
     return shipments.filter(
       (s) =>
-        (status === 'all' || (status === 'active' ? ACTIVE.includes(s.status) : s.status === status)) &&
+        (status === 'all' ||
+          (status === 'active' ? ACTIVE.includes(s.status) : status === 'open' ? !['delivered', 'cancelled'].includes(s.status) : status === 'done' ? ['delivered', 'cancelled'].includes(s.status) : s.status === status)) &&
         (!t || [s.code, s.clientName, s.driverName, s.recipient.name, s.dropoff?.address, s.recipient.phone, s.brand].join(' ').toLowerCase().includes(t))
     );
   }, [shipments, q, status]);
@@ -81,6 +90,8 @@ function Dashboard() {
 
   return (
     <div>
+      {mode === 'panel' && (
+        <>
       <h2>Panel de control</h2>
       <div className="stats">
         <div className="stat">
@@ -152,46 +163,21 @@ function Dashboard() {
               </button>
             </div>
           </div>
-          <div className="card">
-            <h3>Repartidores</h3>
-            {!drivers.length && <div className="muted">Aún no hay repartidores registrados.</div>}
-            {drivers.map((d) => {
-              const n = delivered.filter((s) => s.driverId === d.id);
-              const r = n.filter((s) => s.rating);
-              return (
-                <div key={d.id} className="row between driver-row">
-                  <div>
-                    <span className={`online-dot ${d.online ? 'on' : ''}`} /> <b>{d.name}</b>
-                    <div className="muted sm">
-                      {d.vehicle} {d.plate} · {n.length} entregas · ★ {r.length ? (r.reduce((a, s) => a + s.rating, 0) / r.length).toFixed(1) : '—'}
-                    </div>
-                  </div>
-                  <div className="row gap">
-                    {!d.approved && (
-                      <button className="btn success sm" onClick={() => updateUser(d.id, { approved: true })}>
-                        Aprobar
-                      </button>
-                    )}
-                    {d.approved && CLOUD && (
-                      <button className="btn ghost sm" onClick={() => confirm(`¿Bloquear a ${d.name}?`) && updateUser(d.id, { approved: false, online: false })}>
-                        Bloquear
-                      </button>
-                    )}
-                    <ContactBar name={d.name} phone={d.phone} shipment={{ code: '' }} compact />
-                  </div>
-                </div>
-              );
-            })}
-          </div>
         </div>
       </div>
 
-      <h3 className="section-title">Envíos</h3>
+        </>
+      )}
+      {mode !== 'panel' && (
+        <>
+      <h2>{mode === 'orders' ? '📦 Pedidos' : '🕑 Historial'}</h2>
       <div className="row gap wrap filters">
         <input className="grow" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Buscar guía, cliente, repartidor, dirección…" />
         <select value={status} onChange={(e) => setStatus(e.target.value)}>
           <option value="all">Todos</option>
+          <option value="open">Abiertos (sin terminar)</option>
           <option value="active">En ruta</option>
+          <option value="done">Terminados (entregados y cancelados)</option>
           {Object.entries(STATUS).map(([k, v]) => (
             <option key={k} value={k}>
               {v.label}
@@ -248,6 +234,8 @@ function Dashboard() {
           </tbody>
         </table>
       </div>
+        </>
+      )}
 
       {sel && (
         <Modal title={`Envío ${sel.code}`} onClose={() => setOpen(null)} wide>

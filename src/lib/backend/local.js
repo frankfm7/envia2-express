@@ -4,7 +4,7 @@ const KEY = 'boxruta:data:v2';
 const EV = 'boxruta:ev:';
 const PUB = 'boxruta:pub:';
 const SESSION_KEY = 'boxruta:session';
-const COLS = ['users', 'shipments', 'messages', 'notifications'];
+const COLS = ['users', 'shipments', 'messages', 'notifications', 'driverApps', 'driverCodes'];
 
 export function createLocalBackend(ctx) {
   const channel = typeof BroadcastChannel !== 'undefined' ? new BroadcastChannel('boxruta') : null;
@@ -92,6 +92,14 @@ export function createLocalBackend(ctx) {
       if (!sh || sh.status !== 'pending') return false;
       this.patch('shipments', id, fields, { events: ev });
       return true;
+    },
+    async getOne(col, id) {
+      return data[col]?.find((x) => x.id === id) || null;
+    },
+    async activateDriver(uid, code) {
+      const c = data.driverCodes.find((x) => x.id === uid);
+      if (!c || c.code !== code) throw new Error('Código incorrecto');
+      this.patch('users', uid, { role: 'driver', approved: true, authCode: code, driverStatus: 'approved', online: true, updatedAt: Date.now() });
     },
     async claim(id, token, uid) {
       const sh = data.shipments.find((x) => x.id === id);

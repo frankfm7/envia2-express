@@ -12,15 +12,39 @@ service cloud.firestore {
 
     match /users/{uid} {
       allow read: if signedIn() && (request.auth.uid == uid || isAdmin());
+      // Todos se registran como CLIENTE (el administrador entra con su correo)
       allow create: if signedIn() && request.auth.uid == uid && (
         isAdmin() ||
-        (request.resource.data.role == 'client' && request.resource.data.approved == true) ||
-        (request.resource.data.role == 'driver' && request.resource.data.approved == false));
-      // El usuario edita su perfil pero no puede cambiar su rol ni aprobarse solo.
-      allow update: if isAdmin() || (request.auth.uid == uid
-        && request.resource.data.role == resource.data.role
-        && request.resource.data.approved == resource.data.approved);
+        (request.resource.data.role == 'client' && request.resource.data.approved == true));
+      allow update: if isAdmin()
+        // El usuario edita su perfil, pero no puede cambiar su rol ni aprobarse solo.
+        // Solo puede pasar su solicitud de repartidor a "pending".
+        || (request.auth.uid == uid
+            && request.resource.data.role == resource.data.role
+            && request.resource.data.approved == resource.data.approved
+            && (request.resource.data.get('driverStatus', 'none') == resource.data.get('driverStatus', 'none')
+                || request.resource.data.driverStatus == 'pending')
+            && request.resource.data.get('authCode', null) == resource.data.get('authCode', null))
+        // Activación de repartidor: solo con el código que generó el administrador
+        || (request.auth.uid == uid
+            && resource.data.get('driverStatus', 'none') == 'code_sent'
+            && request.resource.data.role == 'driver'
+            && request.resource.data.approved == true
+            && request.resource.data.authCode == get(/databases/$(database)/documents/driverCodes/$(uid)).data.code
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['role', 'approved', 'authCode', 'driverStatus', 'online', 'updatedAt']));
       allow delete: if isAdmin();
+    }
+
+    // Solicitudes de repartidor (carnet, fotos, números de confianza): solo el dueño y el administrador
+    match /driverApps/{uid} {
+      allow read: if signedIn() && (request.auth.uid == uid || isAdmin());
+      allow create, update: if isAdmin() || (signedIn() && request.auth.uid == uid && request.resource.data.status == 'pending');
+      allow delete: if isAdmin();
+    }
+
+    // Códigos de ingreso de repartidores: SOLO el administrador
+    match /driverCodes/{uid} {
+      allow read, write: if isAdmin();
     }
 
     match /shipments/{id} {

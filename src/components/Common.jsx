@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { STATUS } from '../lib/store';
+import { STATUS, useMe } from '../lib/store';
 import { whatsappLink, BUSINESS_NAME } from '../lib/config';
 import { fmtClock, fmtDate, searchAddress, reverseGeocode, getCurrentPosition, parseLatLng, isShortMapsLink } from '../lib/geo';
 import { compressImage } from '../lib/proof';
@@ -115,9 +115,20 @@ export function AddressInput({ label, value, onChange, near, placeholder }) {
     setLoading(false);
   };
 
+  const me = useMe();
+  const saved = me?.addresses || [];
   return (
     <div className="field addr">
       <label>{label}</label>
+      {!!saved.length && (
+        <div className="chips saved-chips">
+          {saved.map((a) => (
+            <button type="button" key={a.id} className={`chip ${value?.address === a.address ? 'on' : ''}`} onClick={() => onChange({ lat: a.lat, lng: a.lng, address: a.address, reference: a.reference })}>
+              ⭐ {a.label}
+            </button>
+          ))}
+        </div>
+      )}
       <div className="row">
         <input value={q} onChange={(e) => setQ(e.target.value)} placeholder={placeholder || 'Dirección, o pega la ubicación de WhatsApp / Google Maps'} />
         <button type="button" className="btn ghost icon" onClick={useGps} title="Usar mi ubicación">
@@ -149,13 +160,13 @@ export function AddressInput({ label, value, onChange, near, placeholder }) {
   );
 }
 
-export function PhotoInput({ value, onChange, label = 'Tomar foto' }) {
+export function PhotoInput({ value, onChange, label = 'Tomar foto', capture = 'environment', max = 900, hint = 'Se abre la cámara del teléfono', compact }) {
   const [busy, setBusy] = useState(false);
   return (
-    <div className="photo-input">
+    <div className={`photo-input ${compact ? 'compact' : ''}`}>
       {value ? (
         <div className="photo-preview">
-          <img src={value} alt="Foto de evidencia" />
+          <img src={value} alt={label} />
           <button type="button" className="btn ghost sm" onClick={() => onChange(null)}>
             Repetir foto
           </button>
@@ -164,17 +175,17 @@ export function PhotoInput({ value, onChange, label = 'Tomar foto' }) {
         <label className="photo-drop">
           <span style={{ fontSize: 34 }}>📸</span>
           <b>{busy ? 'Procesando…' : label}</b>
-          <span className="muted sm">Se abre la cámara del teléfono</span>
+          <span className="muted sm">{hint}</span>
           <input
             type="file"
             accept="image/*"
-            capture="environment"
+            capture={capture || undefined}
             hidden
             onChange={async (e) => {
               const f = e.target.files?.[0];
               if (!f) return;
               setBusy(true);
-              onChange(await compressImage(f));
+              onChange(await compressImage(f, max));
               setBusy(false);
             }}
           />

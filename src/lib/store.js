@@ -83,7 +83,7 @@ export async function localLogin({ name, phone, role, vehicle, plate }) {
   const clean = phone.replace(/[^\d+]/g, '');
   let user = data.users.find((u) => phoneKey(u.phone) === phoneKey(clean) && u.role === role);
   if (!user) {
-    user = { id: uid('u_'), name, phone: clean, role, vehicle, plate, online: role === 'driver', approved: true, createdAt: Date.now() };
+    user = { id: uid('u_'), name, phone: clean, role, online: false, approved: true, driverStatus: 'none', addresses: [], createdAt: Date.now() };
     b.put('users', user.id, user);
   } else b.patch('users', user.id, { name, ...(vehicle && { vehicle }), ...(plate && { plate }) });
   b.localLogin(user.id);
@@ -92,7 +92,9 @@ export async function localLogin({ name, phone, role, vehicle, plate }) {
 export const loginGoogle = async () => (await B()).loginGoogle();
 
 /** Modo nube: completar perfil después de entrar con Google */
-export async function saveProfile({ name, phone, role, vehicle, plate }) {
+/** Modo nube: completar perfil después de entrar (Google o celular). Todos entran como CLIENTE;
+ *  los repartidores se activan después con el código que da el administrador. */
+export async function saveProfile({ name, phone }) {
   const b = await B();
   const id = session.userId;
   const isAdmin = session.isAdminEmail;
@@ -101,19 +103,93 @@ export async function saveProfile({ name, phone, role, vehicle, plate }) {
     phone: phone.replace(/[^\d+]/g, ''),
     email: session.email || '',
     photo: session.photo || '',
-    role: isAdmin ? 'admin' : role,
-    vehicle: role === 'driver' ? vehicle : null,
-    plate: role === 'driver' ? plate : null,
+    role: isAdmin ? 'admin' : 'client',
     online: false,
-    approved: isAdmin || role !== 'driver' ? true : false,
+    approved: true,
+    driverStatus: 'none',
+    addresses: [],
     createdAt: Date.now(),
   });
   session = { ...session, needsProfile: false };
   emit();
 }
 
+export const loginPhoneStart = async (phoneE164, buttonId) => (await B()).loginPhoneStart(phoneE164, buttonId);
+export const loginPhoneConfirm = async (code) => (await B()).loginPhoneConfirm(code);
+
 export const logout = async () => (await B()).logout();
 export const updateUser = async (id, patch) => (await B()).patch('users', id, patch);
+export const getOne = async (col, id) => (await B()).getOne(col, id);
+
+/** Usuario con sesión iniciada */
+export const useMe = () => {
+  const { users } = useStore();
+  const s = useSession();
+  return users.find((u) => u.id === s?.userId) || null;
+};
+
+// ── Cambiar de perfil sin cerrar sesión (admin → repartidor / cliente; repartidor → cliente) ──
+const VIEW_KEY = 'boxruta:view-role:';
+export const allowedRoles = (me) => (me?.role === 'admin' ? ['admin', 'driver', 'client'] : me?.role === 'driver' && me.approved ? ['driver', 'client'] : ['client']);
+export function getViewRole(me) {
+  if (!me) return 'client';
+  let r = null;
+  try {
+    r = localStorage.getItem(VIEW_KEY + me.id);
+  } catch {
+    /* sin almacenamiento */
+  }
+  return allowedRoles(me).includes(r) ? r : me.role === 'driver' && !me.approved ? 'client' : me.role;
+}
+export function setViewRole(me, role) {
+  try {
+    localStorage.setItem(VIEW_KEY + me.id, role);
+  } catch {
+    /* sin almacenamiento */
+  }
+  emit();
+}
+export const ROLE_LABEL = { client: 'Cliente', driver: 'Repartidor', admin: 'Administrador' };
+
+// ── Direcciones guardadas ──
+export async function saveAddress(me, addr) {
+  const list = [...(me.addresses || []).filter((a) => a.id !== addr.id), { ...addr, id: addr.id || uid('a_') }];
+  return updateUser(me.id, { addresses: list });
+}
+export const deleteAddress = (me, id) => updateUser(me.id, { addresses: (me.addresses || []).filter((a) => a.id !== id) });
+
+// ── Solicitud para ser repartidor → el administrador da un código de ingreso ──
+export async function submitDriverApplication(me, app) {
+  const b = await B();
+  b.put('driverApps', me.id, { ...app, userId: me.id, email: me.email || '', status: 'pending', createdAt: Date.now() });
+  b.patch('users', me.id, {
+    driverStatus: 'pending',
+    driverApp: { fullName: app.fullName, ci: app.ci, vehicle: app.vehicle, plate: app.plate, sentAt: Date.now() },
+  });
+}
+/** Admin: aprueba y genera el código de ingreso (6 dígitos) */
+export async function approveDriverApp(userId, app) {
+  const b = await B();
+  const code = String(Math.floor(100000 + Math.random() * 900000));
+  b.put('driverCodes', userId, { code, createdAt: Date.now() });
+  b.patch('driverApps', userId, { status: 'approved', reviewedAt: Date.now() });
+  b.patch('users', userId, {
+    driverStatus: 'code_sent',
+    vehicle: app?.vehicle || '',
+    plate: app?.plate || '',
+    ...(app?.selfieThumb && { photo: app.selfieThumb }),
+  });
+  return code;
+}
+export async function rejectDriverApp(userId, reason) {
+  const b = await B();
+  b.patch('driverApps', userId, { status: 'rejected', reason, reviewedAt: Date.now() });
+  b.patch('users', userId, { driverStatus: 'rejected', driverRejectReason: reason });
+}
+/** Repartidor: ingresa el código para activar su cuenta */
+export async function activateDriver(me, code) {
+  await (await B()).activateDriver(me.id, code.trim());
+}
 
 // ── Estados ─────────────────────────────────────────────────────────────────
 export const STATUS = {
