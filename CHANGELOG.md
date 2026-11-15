@@ -2,9 +2,33 @@
 
 **Versión de la app: 1.0.0** — se mantiene hasta que el dueño indique un cambio grande (la app aún no se lanza). Se ve al pie de la app.
 
-**Entregas (ZIP):** cada entrega lleva un número que crece (`envia2-express-v1.zip`, `-v2.zip`, `-v3.zip`…) solo para saber cuál es el más nuevo. Abajo se anota qué trae cada una.
+**Entregas (ZIP):** desde la 4 se numeran con decimales: `envia2-express-v4.1.zip`, `-v4.2.zip`, `-v4.3.zip`… (antes fueron v1, v2, v3 y v4). Abajo se anota qué trae cada una.
 
 ---
+
+## Entrega 4.1 (ZIP) — 15 nov 2026 · app versión 1.0.0 · ⚠️ reglas de Firebase actualizadas
+
+**Tarifas y condiciones**
+- Tarifario final (7 tramos; más de 7,5 km = Bs 25/30 + Bs 2,50 por km extra).
+- Las 8 condiciones del servicio en la app y en el mensaje para WhatsApp Business.
+- Mandados: el cliente **adelanta por QR** mínimo el 50 % de la compra (nunca menos que el envío); el saldo se cobra al entregar. El administrador sube su **QR de cobro** en el Panel.
+- Valor declarado: más de Bs 500 se marca "cotizar aparte". Bultos de más de 10 kg: +Bs 3. El cliente acepta las restricciones antes de pedir.
+- **No entrega**: el repartidor deja el paquete "En oficina" (Bs 3/día); el cliente puede pedir **reenvío** (+Bs 5).
+- Aviso de reclamos en el momento de la entrega.
+- Repartidor: ve su **ganancia** (precio − gasolina/desgaste por km, comisión opcional) y puede **ajustar el precio según la tabla** con los km de Google Maps. El cliente solo ve costos.
+
+**Promociones** (menú 🎁, reemplaza a "Direcciones", que pasó a Configuración)
+- 10 puntos por envío entregado; tarjeta de sellos: 6 envíos → cupón 50 %, 10 envíos → envío gratis.
+- Ruleta (50 puntos): 10 %, 30 %, 50 %, +10/+20 puntos, 1 o 2 envíos gratis, o "sigue intentando".
+- Cupones que se aplican al pedir (descuentan solo el envío); vencen a los 60 días.
+- Panel de promociones para el administrador (giros, cupones usados, descuentos dados).
+
+**Correcciones**
+- La sesión ya no se pierde al cerrar la app (sesión guardada en el celular). Si aún se cierra cada hora: revisar la clave de API (guía).
+- Mensajería: cada mensaje queda asociado al perfil que lo envió (se puede probar con una sola cuenta como cliente y repartidor).
+- Repartidores nuevos llenan **toda la solicitud antes de iniciar sesión**; al confirmar identidad se envía sola.
+- Pasos detallados para activar el ingreso con número de celular en Firebase.
+- Reglas: el cliente ya no puede bajar el precio ni marcar su pedido como entregado; colecciones nuevas `settings` y `rewards`.
 
 ## Entrega v4 (ZIP) — 15 nov 2026 · app versión 1.0.0 · ⚠️ reglas de Firebase actualizadas
 

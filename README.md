@@ -1,4 +1,4 @@
-# 🛵 Envia2 Express — versión 1.0.0
+# 🛵 Envia2 Express — app versión 1.0.0 · entrega 4.1
 
 Ver el historial de versiones en [CHANGELOG.md](CHANGELOG.md).
 
@@ -45,8 +45,34 @@ Para usarla en el celular dentro de tu red Wi-Fi: `npm run dev` muestra también
 Edita `src/lib/config.js`: moneda, tarifas (`base`, `perKm`…), tamaños de caja, código de país para WhatsApp (o con variables de entorno, ver `.env.example`) y radio de entrega.
 En modo nube, el administrador es el Gmail que pongas en `VITE_ADMIN_EMAILS`. En modo demo el código es `2468`.
 
-## Tarifario (versión 1)
-Las tarifas están en **`src/lib/tariff.js`** (para cambiar precios se edita solo ese archivo). La distancia se mide por la **ruta por calles**, no en línea recta. Detalle completo en CHANGELOG.md.
+## Tarifario final (Bs) — `src/lib/tariff.js`
+
+| Distancia por la ruta | Envío simple | Mandado / encargo |
+|---|---|---|
+| Hasta 2 km | Bs 8 | Bs 10 |
+| 2,1 – 3,5 km | Bs 10 | Bs 14 |
+| 3,6 – 4,5 km | Bs 12 | Bs 18 |
+| 4,6 – 5,5 km | Bs 15 | Bs 22 |
+| 5,6 – 6,5 km | Bs 18 | Bs 25 |
+| 6,6 – 7,5 km | Bs 22 | Bs 28 |
+| Más de 7,5 km | Bs 25 + Bs 2,50/km extra | Bs 30 + Bs 2,50/km extra |
+
+Las 8 condiciones del servicio están en el mismo archivo (`CONDITIONS`) y se muestran en la app.
+
+## ¿Qué ve cada perfil?
+
+| Información | Cliente | Repartidor | Administrador |
+|---|:-:|:-:|:-:|
+| Precio a pagar y su desglose | ✅ | ✅ | ✅ |
+| Tabla de tarifas y condiciones | ✅ | ✅ | ✅ |
+| **Ganancia** (precio − gasolina/desgaste − comisión) | ❌ | ✅ | ✅ |
+| Ajustar el precio según la tabla (km de Google Maps) | ❌ | ✅ | ✅ |
+| PIN de entrega | ✅ (solo el suyo) | ❌ (lo pide al cliente) | ❌ |
+| Datos y documentos de repartidores | ❌ | Solo los suyos | ✅ |
+| Códigos de ingreso de repartidores | ❌ | ❌ | ✅ |
+| Promociones: puntos, cupones, ruleta | ✅ (los suyos) | Explicación | ✅ + estadísticas |
+| QR de cobro | ✅ (para pagar) | ✅ | ✅ (lo sube) |
+| Todos los pedidos | Solo los suyos | Disponibles + los suyos | ✅ todos |
 
 ## Novedades v5
 - 💬 **Mensajería dentro de la app** (solo texto, liviana) cuando el cliente usa la app, con botones **Ir a WhatsApp** y **Llamar**.

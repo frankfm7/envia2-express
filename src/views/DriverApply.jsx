@@ -10,7 +10,7 @@ const VEHICLES = ['Moto', 'Auto', 'Camioneta', 'Bicicleta'];
 /** Miniatura chica de la selfie para mostrar en la app (la foto grande queda en la solicitud) */
 async function thumb(dataUrl) {
   const blob = await (await fetch(dataUrl)).blob();
-  return compressImage(new File([blob], 's.jpg', { type: 'image/jpeg' }), 200, 0.75);
+  return compressImage(new File([blob], 's.jpg', { type: 'image/jpeg' }), 200, 0.75, false);
 }
 
 /**
@@ -93,13 +93,43 @@ function EnterCode({ me, go }) {
   );
 }
 
-function ApplyForm({ me, go }) {
+/** Borrador de solicitud guardado en el celular ANTES de iniciar sesión */
+export const DRAFT_KEY = 'envia2:driver-draft';
+export const loadDraft = () => {
+  try {
+    return JSON.parse(localStorage.getItem(DRAFT_KEY));
+  } catch {
+    return null;
+  }
+};
+export const clearDraft = () => {
+  try {
+    localStorage.removeItem(DRAFT_KEY);
+  } catch {
+    /* sin almacenamiento */
+  }
+};
+
+/** Envía el borrador apenas la persona inicia sesión */
+export async function submitDraftIfAny(me) {
+  const d = loadDraft();
+  if (!d || !me || me.role === 'admin' || (me.role === 'driver' && me.approved)) return false;
+  if (['pending', 'code_sent'].includes(me.driverStatus)) {
+    clearDraft();
+    return false;
+  }
+  await submitDriverApplication(me, d);
+  clearDraft();
+  return true;
+}
+
+export function ApplyForm({ me, go, onDraft, onBack }) {
   const [f, setF] = useState({
-    fullName: me.name || '',
+    fullName: me?.name || '',
     ci: '',
     ciExt: 'OR',
     birth: '',
-    phone: me.phone || '',
+    phone: me?.phone || '',
     homeAddress: '',
     license: '',
     vehicle: 'Moto',
@@ -135,12 +165,19 @@ function ApplyForm({ me, go }) {
     ].filter(([ok]) => !ok);
     if (need.length) return setErr('Falta: ' + need.map((n) => n[1]).join(' · '));
     setBusy(true);
-    await submitDriverApplication(me, {
-      ...f,
-      plate: f.plate.toUpperCase(),
-      photos,
-      selfieThumb: await thumb(photos.selfie),
-    });
+    const app = { ...f, plate: f.plate.toUpperCase(), photos, selfieThumb: await thumb(photos.selfie) };
+    if (onDraft) {
+      // Antes de iniciar sesión: se guarda y se envía al confirmar identidad (Google / celular)
+      try {
+        localStorage.setItem(DRAFT_KEY, JSON.stringify(app));
+      } catch {
+        setBusy(false);
+        return setErr('No hay espacio en el celular para guardar las fotos. Toma fotos más livianas e intenta de nuevo.');
+      }
+      setBusy(false);
+      return onDraft(app);
+    }
+    await submitDriverApplication(me, app);
     setBusy(false);
     go({ name: 'driver-apply' });
   };
@@ -148,12 +185,12 @@ function ApplyForm({ me, go }) {
   return (
     <form className="page narrow" onSubmit={submit}>
       <div className="page-head">
-        <button type="button" className="btn ghost" onClick={() => go({ name: 'settings' })}>
+        <button type="button" className="btn ghost" onClick={() => (onBack ? onBack() : go({ name: 'settings' }))}>
           ← Volver
         </button>
         <h2>🛵 Quiero ser repartidor</h2>
       </div>
-      {me.driverStatus === 'rejected' && <div className="alert warn">Tu solicitud anterior fue rechazada{me.driverRejectReason ? `: ${me.driverRejectReason}` : ''}. Corrige y envía de nuevo.</div>}
+      {me?.driverStatus === 'rejected' && <div className="alert warn">Tu solicitud anterior fue rechazada{me.driverRejectReason ? `: ${me.driverRejectReason}` : ''}. Corrige y envía de nuevo.</div>}
       <p className="muted sm">Llena tus datos. El administrador los revisará y te dará un código de ingreso. Tus documentos solo los ve el administrador.</p>
 
       <div className="card">

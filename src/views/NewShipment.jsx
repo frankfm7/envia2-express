@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react';
 import MapView from '../components/MapView';
-import { AddressInput } from '../components/Common';
-import { createShipment } from '../lib/store';
+import { AddressInput, PhotoInput } from '../components/Common';
+import { createShipment, saveEvidence, useSettings } from '../lib/store';
+import { usePromo } from '../lib/promo';
 import { getRoute, getCurrentPosition, reverseGeocode } from '../lib/geo';
 import { SIZES, money } from '../lib/config';
-import { computeTariff, isNight, RULES, SERVICES } from '../lib/tariff';
+import { computeTariff, isNight, RULES, SERVICES, errandAdvance, CONDITIONS } from '../lib/tariff';
 import { RouteDistance, PriceBreakdown, TariffCard } from '../components/Tariff';
 
 export default function NewShipment({ me, onDone, onCancel, prefill }) {
@@ -28,7 +29,14 @@ export default function NewShipment({ me, onDone, onCancel, prefill }) {
     payment: 'cash',
     when: 'now',
     scheduledAt: '',
+    declaredValue: '',
+    ack: false,
+    advancePaid: false,
   });
+  const [advanceProof, setAdvanceProof] = useState(null);
+  const [couponId, setCouponId] = useState(null);
+  const settings = useSettings();
+  const promo = usePromo(me);
   const [err, setErr] = useState('');
   const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
 
@@ -58,10 +66,14 @@ export default function NewShipment({ me, onDone, onCancel, prefill }) {
 
   // Precio según el tarifario: distancia de la RUTA (no línea recta)
   const when = form.when === 'later' && form.scheduledAt ? new Date(form.scheduledAt).getTime() : Date.now();
-  const tariff = route ? computeTariff({ km: route.distance / 1000, service: form.service, night: isNight(when) }) : null;
-  const price = tariff?.total ?? null;
+  const tariff = route ? computeTariff({ km: route.distance / 1000, service: form.service, night: isNight(when), weightKg: Number(form.weight) || 0 }) : null;
+  const coupon = promo?.available.find((c) => c.id === couponId) || null;
+  const discount = tariff && coupon ? Math.round(((tariff.total * coupon.pct) / 100) * 10) / 10 : 0;
+  const price = tariff ? Math.round((tariff.total - discount) * 10) / 10 : null;
   const errand = form.service === 'errand';
-  const overCap = errand && Number(form.purchaseAmount) > RULES.errandAdvanceCap;
+  const purchase = Number(form.purchaseAmount) || 0;
+  const advance = errand && tariff ? errandAdvance(purchase, price) : 0;
+  const highValue = Number(form.declaredValue) > RULES.maxGoodsValue;
 
   const submit = async (e) => {
     e.preventDefault();
@@ -70,7 +82,9 @@ export default function NewShipment({ me, onDone, onCancel, prefill }) {
     if (!recipient.name || recipient.phone.replace(/\D/g, '').length < 8) return setErr('Escribe nombre y teléfono de quien recibe.');
     if (form.when === 'later' && !form.scheduledAt) return setErr('Elige fecha y hora de recolección.');
     if (errand && !form.purchase.trim()) return setErr('Escribe qué hay que comprar.');
-    if (overCap && form.payment === 'cash') return setErr(`La compra supera Bs ${RULES.errandAdvanceCap}: elige pago por Transferencia / QR por adelantado.`);
+    if (errand && !purchase) return setErr('Escribe el monto aproximado de la compra.');
+    if (errand && !form.advancePaid) return setErr(`Para mandados debes adelantar ${money(advance)} por QR y marcar "Ya pagué el adelanto".`);
+    if (!form.ack) return setErr('Confirma que tu envío cumple las condiciones (sin efectivo mayor a Bs 200, documentos de valor, armas ni artículos prohibidos).');
     const id = await createShipment(me, {
       pickup,
       dropoff,
@@ -85,6 +99,11 @@ export default function NewShipment({ me, onDone, onCancel, prefill }) {
       purchaseAmount: errand ? Number(form.purchaseAmount) || 0 : 0,
       routeKm: tariff.km,
       tariff: { lines: tariff.lines, total: tariff.total, km: tariff.km, approx: !!route.approx },
+      originalPrice: tariff.total,
+      coupon: coupon ? { id: coupon.id, pct: coupon.pct, label: coupon.label, discount } : null,
+      declaredValue: Number(form.declaredValue) || 0,
+      highValue,
+      advance: errand ? { amount: advance, paid: true, hasProof: !!advanceProof, at: Date.now() } : null,
       content: form.content,
       notes: form.notes,
       payment: form.payment,
@@ -92,6 +111,7 @@ export default function NewShipment({ me, onDone, onCancel, prefill }) {
       price,
       tripRoute: route,
     });
+    if (advanceProof) saveEvidence(id, { advanceProof });
     onDone(id);
   };
 
@@ -118,6 +138,18 @@ export default function NewShipment({ me, onDone, onCancel, prefill }) {
           <div className="card" style={{ marginTop: 10 }}>
             <RouteDistance a={pickup} b={dropoff} route={route} allowManual={false} />
             <PriceBreakdown result={tariff} />
+            {coupon && (
+              <div className="breakdown coupon-line">
+                <div className="row between">
+                  <span>🎫 Cupón {coupon.pct === 100 ? 'envío gratis' : `${coupon.pct} %`}</span>
+                  <b>− {money(discount)}</b>
+                </div>
+                <div className="row between total">
+                  <span>Pagas por el envío</span>
+                  <b>{money(price)}</b>
+                </div>
+              </div>
+            )}
             <p className="muted sm">
               Pueden sumarse: espera mayor a {RULES.freeWaitMin} min por parada (Bs {RULES.waitBlockPrice} cada 10 min) y Bs {RULES.surcharge} con lluvia/granizo.
             </p>
@@ -146,9 +178,7 @@ export default function NewShipment({ me, onDone, onCancel, prefill }) {
                 <div className="field">
                   <label>Monto aproximado de la compra (Bs)</label>
                   <input type="number" min="0" inputMode="decimal" value={form.purchaseAmount} onChange={(e) => set('purchaseAmount', e.target.value)} placeholder="Ej. 35" />
-                  <span className={`sm ${overCap ? 'warn' : 'muted'}`}>
-                    Adelantamos hasta Bs {RULES.errandAdvanceCap}. {overCap ? 'Tu compra es mayor: paga por QR / transferencia antes.' : 'Al recibir pagas envío + compra (con ticket).'}
-                  </span>
+                  <span className="sm muted">El repartidor no pone su dinero: adelantas por QR al menos el 50 % de la compra (y nunca menos que el envío).</span>
                 </div>
               </>
             )}
@@ -236,9 +266,73 @@ export default function NewShipment({ me, onDone, onCancel, prefill }) {
             </div>
           </div>
 
+          {!!promo?.available.length && (
+            <div className="card">
+              <h3>🎫 Usar un cupón</h3>
+              <div className="coupon-pick">
+                {promo.available.map((c) => (
+                  <button type="button" key={c.id} className={`ticket ${c.pct === 100 ? 'gold' : ''} ${couponId === c.id ? 'sel' : ''}`} onClick={() => setCouponId(couponId === c.id ? null : c.id)}>
+                    <div className="ticket-left">
+                      <b>{c.pct === 100 ? 'GRATIS' : `${c.pct}%`}</b>
+                      <small>{couponId === c.id ? '✔ aplicado' : 'tocar para usar'}</small>
+                    </div>
+                    <div className="ticket-right">
+                      <b>{c.label}</b>
+                      <span className="muted sm">{c.source}</span>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {errand && tariff && (
+            <div className="card advance-card">
+              <h3>💳 Adelanto por QR</h3>
+              <p className="sm">
+                Adelanta <b>{money(advance)}</b> ({purchase ? `50 % de la compra de ${money(purchase)}` : 'monto de la compra'}, mínimo el costo del envío). El saldo de <b>{money(Math.max(0, price + purchase - advance))}</b> lo pagas al recibir.
+              </p>
+              {settings.qrImage ? (
+                <div className="qr-box">
+                  <img src={settings.qrImage} alt="QR de pago" />
+                  {settings.qrName && <div className="sm">{settings.qrName}</div>}
+                </div>
+              ) : (
+                <div className="alert warn sm">El QR de pago te lo enviaremos por WhatsApp.</div>
+              )}
+              <PhotoInput value={advanceProof} onChange={setAdvanceProof} label="Foto del comprobante (opcional)" capture="" hint="Captura o foto del pago" compact />
+              <label className="check">
+                <input type="checkbox" checked={form.advancePaid} onChange={(e) => set('advancePaid', e.target.checked)} /> Ya pagué el adelanto de {money(advance)}
+              </label>
+            </div>
+          )}
+
+          <div className="card">
+            <h3>📋 Condiciones</h3>
+            <div className="field">
+              <label>Valor aproximado de lo que envías (Bs)</label>
+              <input type="number" min="0" inputMode="decimal" value={form.declaredValue} onChange={(e) => set('declaredValue', e.target.value)} placeholder="Opcional" />
+              {highValue && <span className="sm warn">Más de Bs {RULES.maxGoodsValue}: se cotiza aparte. Te contactaremos para acordar el precio.</span>}
+            </div>
+            {Number(form.weight) > RULES.heavyKg && <div className="alert warn sm">Bulto de más de {RULES.heavyKg} kg: +Bs {RULES.heavySurcharge} (ya incluido).</div>}
+            <details className="howto">
+              <summary>Ver las condiciones del servicio</summary>
+              <ol className="sm">
+                {CONDITIONS.map(([t, d]) => (
+                  <li key={t}>
+                    <b>{t}:</b> {d}
+                  </li>
+                ))}
+              </ol>
+            </details>
+            <label className="check">
+              <input type="checkbox" checked={form.ack} onChange={(e) => set('ack', e.target.checked)} /> Acepto las condiciones: no envío efectivo mayor a Bs {RULES.maxCash}, documentos de valor, armas ni artículos prohibidos.
+            </label>
+          </div>
+
           {err && <div className="alert error">{err}</div>}
           <button className="btn primary block lg sticky-cta" disabled={!route}>
-            {route ? `Solicitar ${errand ? 'mandado' : 'envío'} · ${money(price)}${errand && form.purchaseAmount ? ' + compra' : ''}` : 'Elige origen y destino'}
+            {route ? `Solicitar ${errand ? 'mandado' : 'envío'} · ${money(price)}${errand && purchase ? ' + compra' : ''}` : 'Elige origen y destino'}
           </button>
         </div>
       </div>

@@ -30,12 +30,20 @@ function FitBounds({ points, follow }) {
   useEffect(() => {
     const valid = points.filter(Boolean);
     if (!valid.length) return;
-    if (follow) {
-      map.panTo([follow.lat, follow.lng], { animate: true });
-      return;
+    try {
+      if (follow) map.panTo([follow.lat, follow.lng], { animate: true });
+      else if (valid.length === 1) map.setView([valid[0].lat, valid[0].lng], 15);
+      else map.fitBounds(L.latLngBounds(valid.map((p) => [p.lat, p.lng])), { padding: [40, 40], maxZoom: 16 });
+    } catch {
+      /* el mapa se cerró durante la animación */
     }
-    if (valid.length === 1) map.setView([valid[0].lat, valid[0].lng], 15);
-    else map.fitBounds(L.latLngBounds(valid.map((p) => [p.lat, p.lng])), { padding: [40, 40], maxZoom: 16 });
+    return () => {
+      try {
+        map.stop(); // detiene animaciones si se sale de la pantalla
+      } catch {
+        /* nada */
+      }
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key, follow?.lat, follow?.lng]);
   return null;
@@ -49,7 +57,13 @@ function ClickHandler({ onClick }) {
 function InvalidateOnResize() {
   const map = useMap();
   useEffect(() => {
-    const ro = new ResizeObserver(() => map.invalidateSize());
+    const ro = new ResizeObserver(() => {
+      try {
+        map.invalidateSize();
+      } catch {
+        /* mapa ya cerrado */
+      }
+    });
     ro.observe(map.getContainer());
     return () => ro.disconnect();
   }, [map]);
@@ -61,7 +75,7 @@ export default function MapView({ pickup, dropoff, driver, drivers, person, me, 
   const start = center || fitPoints[0] || DEFAULT_CENTER;
   return (
     <div className="map-wrap" style={{ height }}>
-      <MapContainer center={[start.lat, start.lng]} zoom={14} style={{ height: '100%', width: '100%' }} zoomControl={false}>
+      <MapContainer center={[start.lat, start.lng]} zoom={14} style={{ height: "100%", width: "100%" }} zoomControl={false} zoomAnimation={false} markerZoomAnimation={false}>
         <TileLayer attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>' url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
         <InvalidateOnResize />
         <FitBounds points={fitPoints} follow={follow && driver ? driver : null} />

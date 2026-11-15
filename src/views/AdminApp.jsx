@@ -2,7 +2,8 @@ import { useMemo, useState } from 'react';
 import MapView from '../components/MapView';
 import Receipt from '../components/Receipt';
 import { StatusBadge, Modal, Timeline, ContactBar } from '../components/Common';
-import { useStore, STATUS, ACTIVE, exportBackup, importBackup, resetAll, updateUser, CLOUD } from '../lib/store';
+import { useStore, STATUS, ACTIVE, exportBackup, importBackup, resetAll, updateUser, CLOUD, useSettings, saveSettings } from '../lib/store';
+import { compressImage } from '../lib/proof';
 import CatalogBoxes from './CatalogBoxes';
 import Quote from './Quote';
 import DriverAdmin from './DriverAdmin';
@@ -130,6 +131,7 @@ function Dashboard({ mode = 'panel' }) {
           <LiveMap ships={activeShip} />
         </div>
         <div className="split-form">
+          <QrCard />
           <div className="card">
             <h3>Respaldo de datos</h3>
             <p className="muted sm">Descarga todas las entregas con sus fotos, firmas y sellos. Guarda el archivo en tu computadora o en la nube.</p>
@@ -272,6 +274,43 @@ function LiveMap({ ships }) {
             <StatusBadge status={s.status} />
           </div>
         ))}
+      </div>
+    </div>
+  );
+}
+
+/** QR de cobro del negocio (lo ven los clientes al pagar el adelanto de un mandado) */
+function QrCard() {
+  const st = useSettings();
+  const [name, setName] = useState(st.qrName || '');
+  return (
+    <div className="card">
+      <h3>💳 QR de cobro</h3>
+      <p className="muted sm">Los clientes lo ven al pagar el adelanto de los mandados (mínimo 50 % de la compra).</p>
+      {st.qrImage && (
+        <div className="qr-box">
+          <img src={st.qrImage} alt="QR de cobro" />
+        </div>
+      )}
+      <div className="row gap wrap">
+        <label className="btn">
+          {st.qrImage ? 'Cambiar QR' : 'Subir QR (foto o captura)'}
+          <input type="file" accept="image/*" hidden onChange={async (e) => e.target.files?.[0] && saveSettings({ qrImage: await compressImage(e.target.files[0], 700, 0.9, false) })} />
+        </label>
+        {st.qrImage && (
+          <button className="btn ghost danger sm" onClick={() => saveSettings({ qrImage: null })}>
+            Quitar
+          </button>
+        )}
+      </div>
+      <div className="field" style={{ marginTop: 8 }}>
+        <label>Titular / banco (se muestra bajo el QR)</label>
+        <div className="row gap">
+          <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Ej. Envia2 Express · Banco Unión" />
+          <button className="btn sm" onClick={() => saveSettings({ qrName: name })}>
+            Guardar
+          </button>
+        </div>
       </div>
     </div>
   );

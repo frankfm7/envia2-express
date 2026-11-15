@@ -10,7 +10,7 @@ import { createLocalBackend } from './backend/local';
 
 export const CLOUD = !!import.meta.env.VITE_FIREBASE_API_KEY;
 
-let data = { users: [], shipments: [], messages: [], notifications: [] };
+let data = { users: [], shipments: [], messages: [], notifications: [], settings: [], rewards: [] };
 let session = null;
 let sync = { ready: false, online: navigator.onLine, pending: false, cloud: CLOUD };
 const listeners = new Set();
@@ -200,6 +200,7 @@ export const STATUS = {
   in_transit: { label: 'En camino al destino', color: '#0ea5e9', step: 3 },
   arrived: { label: 'Repartidor en el punto de entrega', color: '#10b981', step: 4 },
   delivered: { label: 'Entregado', color: '#16a34a', step: 5 },
+  stored: { label: 'En oficina (no se pudo entregar)', color: '#a16207', step: 4 },
   cancelled: { label: 'Cancelado', color: '#ef4444', step: -1 },
 };
 export const ACTIVE = ['accepted', 'picked_up', 'in_transit', 'arrived'];
@@ -391,4 +392,20 @@ export async function ensurePublicToken(s) {
   const t = token();
   (await B()).patch('shipments', s.id, { publicToken: t });
   return t;
+}
+
+// ── Ajustes del negocio (QR de cobro, etc.) ─────────────────────────────────
+export const useSettings = () => {
+  const { settings } = useStore();
+  return (settings || []).find((x) => x.id === 'app') || {};
+};
+export async function saveSettings(patch) {
+  const b = await B();
+  const cur = (data.settings || []).find((x) => x.id === 'app') || {};
+  b.put('settings', 'app', { ...cur, ...patch, updatedAt: Date.now() });
+}
+
+// ── Promociones: guardar un giro de la ruleta ───────────────────────────────
+export async function saveReward(rec) {
+  (await B()).put('rewards', rec.id, rec);
 }

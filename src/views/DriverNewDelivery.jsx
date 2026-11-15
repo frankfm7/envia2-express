@@ -4,7 +4,7 @@ import { AddressInput } from '../components/Common';
 import { createShipment } from '../lib/store';
 import { getRoute, getCurrentPosition, reverseGeocode } from '../lib/geo';
 import { BRANDS, SIZES, money } from '../lib/config';
-import { computeTariff, isNight, RULES, SERVICES } from '../lib/tariff';
+import { computeTariff, isNight, RULES, SERVICES, errandAdvance } from '../lib/tariff';
 import { RouteDistance, PriceBreakdown, TariffCard } from '../components/Tariff';
 
 /**
@@ -126,7 +126,7 @@ export default function DriverNewDelivery({ me, onDone, onCancel, prefill }) {
                   <label>Monto compra</label>
                   <input type="number" min="0" value={f.purchaseAmount} onChange={(e) => set('purchaseAmount', e.target.value)} placeholder="Bs" />
                 </div>
-                {Number(f.purchaseAmount) > RULES.errandAdvanceCap && <div className="alert warn sm">Supera Bs {RULES.errandAdvanceCap}: pide pago por QR antes de comprar.</div>}
+                {Number(f.purchaseAmount) > 0 && <div className="alert warn sm">No pongas tu dinero: pide al cliente el adelanto por QR de {money(errandAdvance(f.purchaseAmount, finalPrice))} (50 % de la compra, mínimo el envío) antes de comprar.</div>}
               </div>
             )}
             <h3>🙋 ¿Quién recibe?</h3>

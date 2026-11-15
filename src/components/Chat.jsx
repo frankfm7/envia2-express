@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { useStore, sendMessage, markRead } from '../lib/store';
+import { useStore, sendMessage, markRead, ROLE_LABEL } from '../lib/store';
 import { whatsappLink } from '../lib/config';
 import { fmtClock } from '../lib/geo';
 import { WhatsAppIcon } from './Common';
@@ -19,6 +19,8 @@ export default function Chat({ s, me, other, height = 240 }) {
   const [text, setText] = useState('');
   const end = useRef(null);
   const closed = ['delivered', 'cancelled'].includes(s.status);
+  // Un mensaje es "mío" si lo envié desde el MISMO perfil (sirve para probar con una sola cuenta como cliente y repartidor)
+  const isMine = (m) => m.fromId === me.id && (!m.role || m.role === me.role);
 
   useEffect(() => {
     end.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
@@ -50,8 +52,12 @@ export default function Chat({ s, me, other, height = 240 }) {
       <div className="chat-list" style={{ height }}>
         {!list.length && <div className="empty sm">Sin mensajes. Escribe aquí o usa WhatsApp.</div>}
         {list.map((m) => (
-          <div key={m.id} className={`msg ${m.fromId === me.id ? 'mine' : ''}`}>
-            {m.fromId !== me.id && <div className="msg-name">{m.fromName}</div>}
+          <div key={m.id} className={`msg ${isMine(m) ? 'mine' : ''}`}>
+            {!isMine(m) && (
+              <div className="msg-name">
+                {m.fromName} · {ROLE_LABEL[m.role] || ''}
+              </div>
+            )}
             <div>{m.text}</div>
             <div className="msg-time">{fmtClock(m.ts)}</div>
           </div>

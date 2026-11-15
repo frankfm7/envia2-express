@@ -1,13 +1,21 @@
 import { useState } from 'react';
-import { TIERS, LONG, RULES, SERVICES, tariffMessage, conditionsMessage } from '../lib/tariff';
+import { TIERS, LONG, RULES, SERVICES, CONDITIONS, EARNINGS, tariffMessage, conditionsMessage, driverEarning } from '../lib/tariff';
 import { BUSINESS_NAME, money, whatsappLink } from '../lib/config';
 import { fmtKm, fmtMin, googleMapsRouteLink, distance } from '../lib/geo';
 import { WhatsAppIcon } from './Common';
 
 const bs = (n) => money(n);
 
-/** Tabla de tarifas. `showNet` muestra la ganancia neta (solo repartidores/admin). */
-export function TariffTable({ showNet = false, highlight }) {
+/** Ganancia estimada del repartidor para un tramo (solo repartidor / admin) */
+const netRange = (price, kmFrom, kmTo) => {
+  const a = driverEarning(price, kmTo).net;
+  const b = driverEarning(price, kmFrom).net;
+  return a === b ? bs(a) : `${bs(a)} – ${bs(b)}`;
+};
+
+/** Tabla de tarifas. `showNet` muestra la ganancia (solo repartidores/admin). */
+export function TariffTable({ showNet = false }) {
+  let prev = 0;
   return (
     <div className="table-wrap tariff">
       <table className="table">
@@ -15,62 +23,64 @@ export function TariffTable({ showNet = false, highlight }) {
           <tr>
             <th>Distancia (ruta)</th>
             <th>📦 Envío simple</th>
-            <th>🛍️ Mandado con compra</th>
-            {showNet && <th>Ganancia neta</th>}
+            <th>🛍️ Mandado / encargo</th>
+            {showNet && <th>Ganancia (simple)</th>}
           </tr>
         </thead>
         <tbody>
-          {TIERS.map((t, i) => (
-            <tr key={t.name} className={highlight === i ? 'hl' : ''}>
-              <td>
-                <b>{t.name}</b>
-                <div className="muted sm">{t.zone}</div>
-              </td>
-              <td>{bs(t.simple)}</td>
-              <td>{bs(t.errand)}</td>
-              {showNet && (
+          {TIERS.map((t) => {
+            const from = prev;
+            prev = t.upTo;
+            return (
+              <tr key={t.name}>
                 <td>
-                  {bs(t.net[0])} – {bs(t.net[1])}
+                  <b>{t.name}</b>
+                  {t.zone && <div className="muted sm">{t.zone}</div>}
                 </td>
-              )}
-            </tr>
-          ))}
-          <tr className={highlight === 3 ? 'hl' : ''}>
+                <td>{bs(t.simple)}</td>
+                <td>{bs(t.errand)}</td>
+                {showNet && <td>{netRange(t.simple, from || 0.5, t.upTo)}</td>}
+              </tr>
+            );
+          })}
+          <tr>
             <td>
               <b>{LONG.name}</b>
               <div className="muted sm">{LONG.zone}</div>
             </td>
             <td>
-              {bs(TIERS[2].simple)} + {bs(LONG.perKm.simple)}/km extra
+              {bs(LONG.base.simple)} + {bs(LONG.perKm.simple)}/km extra
             </td>
             <td>
-              {bs(TIERS[2].errand)} + {bs(LONG.perKm.errand)}/km extra
+              {bs(LONG.base.errand)} + {bs(LONG.perKm.errand)}/km extra
             </td>
-            {showNet && <td>Variable (desde {bs(LONG.net[0])})</td>}
+            {showNet && <td>Variable</td>}
           </tr>
         </tbody>
       </table>
+      {showNet && (
+        <p className="muted sm" style={{ padding: '6px 10px' }}>
+          Ganancia = precio − gasolina/desgaste ({bs(EARNINGS.costPerKm)} por km){EARNINGS.commissionPct ? ` − comisión ${EARNINGS.commissionPct} %` : ''}. Se ajusta en <code>src/lib/tariff.js</code>.
+        </p>
+      )}
     </div>
   );
 }
 
+/** Las condiciones del servicio */
 export function TariffRules({ forDriver }) {
   return (
-    <ul className="rules">
-      <li>
-        📏 La distancia se mide por la <b>ruta que se va a recorrer</b>, no en línea recta. El km extra cuenta desde el km {LONG.from} (ej. 7 km = 1 km extra).
-      </li>
-      <li>
-        ⏱️ <b>{RULES.freeWaitMin} min de espera gratis</b> por parada (recojo, compra o entrega); luego {bs(RULES.waitBlockPrice)} cada 10 min.
-      </li>
-      <li>
-        🌙 Desde las {RULES.nightFrom}:00 o con lluvia/granizo: recargo fijo de {bs(RULES.surcharge)}.
-      </li>
-      <li>
-        🛍️ En mandados se adelanta hasta {bs(RULES.errandAdvanceCap)}; compras mayores se pagan antes por QR.
-      </li>
-      {forDriver && <li>📍 Sin la app: pide al cliente las 2 ubicaciones por WhatsApp y pégalas en el cotizador (o mide la ruta en Google Maps).</li>}
-    </ul>
+    <div className="conditions">
+      <b>⚡ Condiciones del servicio</b>
+      <ol>
+        {CONDITIONS.map(([t, d]) => (
+          <li key={t}>
+            <b>{t}:</b> {d}
+          </li>
+        ))}
+      </ol>
+      {forDriver && <p className="muted sm">📍 Si el cliente no usa la app: pídele las 2 ubicaciones por WhatsApp y pégalas en el cotizador.</p>}
+    </div>
   );
 }
 
@@ -90,8 +100,9 @@ export function PriceBreakdown({ result, showNet }) {
         <b>{bs(result.total)}</b>
       </div>
       {showNet && (
-        <div className="muted sm">
-          Ganancia neta estimada: {result.net[1] ? `${bs(result.net[0])} – ${bs(result.net[1])}` : `desde ${bs(result.net[0])}`}
+        <div className="earning">
+          💰 Tu ganancia estimada: <b>{bs(driverEarning(result.total, result.km).net)}</b>
+          <span className="muted sm"> (gasolina/desgaste ≈ {bs(driverEarning(result.total, result.km).cost)})</span>
         </div>
       )}
     </div>

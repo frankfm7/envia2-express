@@ -3,7 +3,7 @@
 //  - Firestore con caché sin conexión: si no hay señal, todo (firmas, fotos,
 //    estados) se guarda en el celular y se sube solo cuando vuelve internet.
 import { initializeApp } from 'firebase/app';
-import { getAuth, GoogleAuthProvider, signInWithPopup, signInWithRedirect, getRedirectResult, onAuthStateChanged, signOut, RecaptchaVerifier, signInWithPhoneNumber } from 'firebase/auth';
+import { initializeAuth, indexedDBLocalPersistence, browserLocalPersistence, browserPopupRedirectResolver, GoogleAuthProvider, signInWithPopup, signInWithRedirect, getRedirectResult, onAuthStateChanged, signOut, RecaptchaVerifier, signInWithPhoneNumber } from 'firebase/auth';
 import {
   initializeFirestore,
   persistentLocalCache,
@@ -52,7 +52,12 @@ export function createCloudBackend(ctx) {
     projectId: env.VITE_FIREBASE_PROJECT_ID,
     appId: env.VITE_FIREBASE_APP_ID,
   });
-  const auth = getAuth(app);
+  // Sesión guardada en el celular (IndexedDB / localStorage): no se cierra al salir de la app.
+  // Firebase renueva el acceso solo cada hora; si el renuevo falla, revisar la clave de API (ver guía).
+  const auth = initializeAuth(app, {
+    persistence: [indexedDBLocalPersistence, browserLocalPersistence],
+    popupRedirectResolver: browserPopupRedirectResolver,
+  });
   const db = initializeFirestore(app, {
     localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() }),
     ignoreUndefinedProperties: true,
@@ -72,7 +77,7 @@ export function createCloudBackend(ctx) {
   window.addEventListener('offline', () => setSync({ online: false }));
 
   const publish = () => {
-    const out = { users: new Map(), shipments: new Map(), messages: new Map(), notifications: new Map() };
+    const out = { users: new Map(), shipments: new Map(), messages: new Map(), notifications: new Map(), settings: new Map(), rewards: new Map() };
     let pending = false;
     for (const s of Object.values(sources)) {
       s.docs.forEach((d) => out[s.col].set(d.id, d));
@@ -84,6 +89,8 @@ export function createCloudBackend(ctx) {
       shipments: [...out.shipments.values()].sort(by('createdAt')),
       messages: [...out.messages.values()].sort((a, b) => a.ts - b.ts),
       notifications: [...out.notifications.values()].sort((a, b) => a.ts - b.ts),
+      settings: [...out.settings.values()],
+      rewards: [...out.rewards.values()].sort((a, b) => a.ts - b.ts),
     });
     if (pending !== sync.pending) setSync({ pending });
   };
@@ -138,6 +145,9 @@ export function createCloudBackend(ctx) {
     }
     listen('msgs', 'messages', query(collection(db, 'messages'), where('participants', 'array-contains', uid)));
     listen('notifs', 'notifications', query(collection(db, 'notifications'), where('userId', '==', uid)));
+    // Ajustes del negocio (QR de cobro) y promociones (puntos / cupones)
+    listen('settings', 'settings', collection(db, 'settings'));
+    listen('rewards', 'rewards', me.role === 'admin' ? collection(db, 'rewards') : query(collection(db, 'rewards'), where('userId', '==', uid)));
   }
 
   getRedirectResult(auth).catch(() => {});
@@ -147,7 +157,7 @@ export function createCloudBackend(ctx) {
     if (!u) {
       userUid = null;
       ctx.setSession(null);
-      ctx.setData({ users: [], shipments: [], messages: [], notifications: [] });
+      ctx.setData({ users: [], shipments: [], messages: [], notifications: [], settings: [], rewards: [] });
       return setSync({ ready: true });
     }
     userUid = u.uid;

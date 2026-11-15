@@ -4,7 +4,7 @@ const KEY = 'boxruta:data:v2';
 const EV = 'boxruta:ev:';
 const PUB = 'boxruta:pub:';
 const SESSION_KEY = 'boxruta:session';
-const COLS = ['users', 'shipments', 'messages', 'notifications', 'driverApps', 'driverCodes'];
+const COLS = ['users', 'shipments', 'messages', 'notifications', 'driverApps', 'driverCodes', 'settings', 'rewards'];
 
 export function createLocalBackend(ctx) {
   const channel = typeof BroadcastChannel !== 'undefined' ? new BroadcastChannel('boxruta') : null;
@@ -53,7 +53,9 @@ export function createLocalBackend(ctx) {
   ctx.setData(data);
   ctx.setSync({ ready: true, online: navigator.onLine, pending: false, cloud: false });
   try {
-    const s = JSON.parse(sessionStorage.getItem(SESSION_KEY));
+    // Cada pestaña tiene su sesión; al abrir la app de nuevo se recupera la última (no hay que volver a entrar)
+    const tab = sessionStorage.getItem(SESSION_KEY);
+    const s = tab !== null ? JSON.parse(tab) : JSON.parse(localStorage.getItem(SESSION_KEY));
     if (s) ctx.setSession(s);
   } catch {
     /* sin sesión */
@@ -154,11 +156,13 @@ export function createLocalBackend(ctx) {
     // ── sesión local (sin Google) ──
     localLogin(userId) {
       const s = { userId };
+      localStorage.setItem(SESSION_KEY, JSON.stringify(s));
       sessionStorage.setItem(SESSION_KEY, JSON.stringify(s));
       ctx.setSession(s);
     },
     async logout() {
-      sessionStorage.removeItem(SESSION_KEY);
+      localStorage.removeItem(SESSION_KEY);
+      sessionStorage.setItem(SESSION_KEY, 'null');
       ctx.setSession(null);
     },
     exportAll: async () => {

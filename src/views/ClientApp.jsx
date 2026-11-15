@@ -11,7 +11,7 @@ import { ConfirmMeeting, MeetingStatus } from './Meeting';
 import { useEta, arrivalClock } from '../lib/useEta';
 import { fmtKm, fmtMin, fmtDate } from '../lib/geo';
 import { money, SIZES, PAYMENT_LABEL } from '../lib/config';
-import { SERVICES } from '../lib/tariff';
+import { SERVICES, RULES as TRULES } from '../lib/tariff';
 import { biometricConfirm, biometricAvailable } from '../lib/proof';
 
 export default function ClientApp({ me, view, go }) {
@@ -48,7 +48,7 @@ export default function ClientApp({ me, view, go }) {
   }
 
   const toConfirm = mine.filter((s) => s.status === 'awaiting_confirmation' && s.recipientUid === me.id);
-  const active = mine.filter((s) => !toConfirm.includes(s) && (['pending', 'awaiting_confirmation'].includes(s.status) || ACTIVE.includes(s.status)));
+  const active = mine.filter((s) => !toConfirm.includes(s) && (['pending', 'awaiting_confirmation', 'stored'].includes(s.status) || ACTIVE.includes(s.status)));
   const past = mine.filter((s) => !active.includes(s));
 
   const section = view.name === 'orders' ? 'orders' : view.name === 'history' ? 'history' : 'home';
@@ -269,6 +269,7 @@ function Track({ s, me, back }) {
         </div>
 
         <div className="split-form">
+          {s.status === 'stored' && <StoredCard s={s} />}
           {s.status === 'awaiting_confirmation' && !isRecipientUser && (
             <div className="alert warn">Esperando que {s.recipient.name} confirme lugar y hora de entrega.</div>
           )}
@@ -439,6 +440,44 @@ function Track({ s, me, back }) {
           <Receipt shipment={s} />
         </Modal>
       )}
+    </div>
+  );
+}
+
+/** Paquete en oficina: cargo por depósito y reenvío */
+function StoredCard({ s }) {
+  const days = Math.max(1, Math.ceil((Date.now() - (s.storedAt || Date.now())) / 864e5));
+  const storage = days * TRULES.storagePerDay;
+  return (
+    <div className="card stored-card">
+      <h3>🏢 Tu paquete está en oficina</h3>
+      <p className="sm">
+        No se pudo entregar{s.incident?.reason ? `: ${s.incident.reason}` : ''}. Depósito: Bs {TRULES.storagePerDay} por día (van {days} día{days > 1 ? 's' : ''}: <b>{money(storage)}</b>).
+      </p>
+      <button
+        className="btn primary block"
+        onClick={() => {
+          if (!confirm(`¿Pedir reenvío? Se suman ${money(TRULES.redelivery)} de reenvío + ${money(storage)} de depósito.`)) return;
+          const extra = TRULES.redelivery + storage;
+          updateShipment(
+            s.id,
+            {
+              price: (s.price || 0) + extra,
+              redelivery: { at: Date.now(), redelivery: TRULES.redelivery, storage, days },
+              tariff: { ...(s.tariff || {}), lines: [...(s.tariff?.lines || []), { label: 'Reenvío', amount: TRULES.redelivery }, { label: `Depósito ${days} día(s)`, amount: storage }] },
+              driverId: null,
+              driverPos: null,
+              route: null,
+              pickupArrivedAt: null,
+              nearNotified: false,
+            },
+            { status: 'pending', note: 'Reenvío solicitado por el cliente' }
+          );
+        }}
+      >
+        🔁 Solicitar reenvío (+{money(TRULES.redelivery)})
+      </button>
+      <p className="muted sm">También puedes recogerlo en la oficina pagando el depósito.</p>
     </div>
   );
 }

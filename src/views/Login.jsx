@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { localLogin, loginGoogle, loginPhoneStart, loginPhoneConfirm, saveProfile, logout, CLOUD } from '../lib/store';
 import { APP_VERSION, WHATSAPP_COUNTRY_CODE } from '../lib/config';
 import { LogoFull } from '../components/Logo';
+import { ApplyForm, loadDraft, clearDraft } from './DriverApply';
 
 export const ADMIN_CODE = import.meta.env.VITE_DEMO_ADMIN_CODE || '2468'; // solo modo demo
 export const INTENT_KEY = 'envia2:intent'; // 'driver' si entró por "Soy repartidor"
@@ -189,8 +190,10 @@ function WhoTabs({ who, setWho, demo }) {
 
 /** Pantalla de entrada */
 export default function Login({ session, claim }) {
-  const [who, setWho] = useState('client');
+  const [who, setWho] = useState(() => (loadDraft() ? 'driver' : 'client'));
   const [method, setMethod] = useState(null); // 'phone'
+  // Repartidor: 'choose' → 'form' (solicitud) → 'confirm' (entrar para enviarla) · 'code' (ya tiene código)
+  const [stage, setStage] = useState(() => (loadDraft() ? 'confirm' : 'choose'));
   const [err, setErr] = useState('');
   const [adminCode, setAdminCode] = useState('');
 
@@ -210,11 +213,59 @@ export default function Login({ session, claim }) {
       </div>
     );
 
-  const driverNote = (
-    <div className="alert info sm">
-      🛵 <b>Repartidores:</b> entra con tu cuenta, llena tu solicitud (carnet, fotos, vehículo, números de confianza) y el administrador te dará un <b>código de ingreso</b>. ¿Ya tienes tu código? Entra y escríbelo.
+  // Repartidor nuevo: primero la solicitud completa (antes de iniciar sesión)
+  if (who === 'driver' && stage === 'form')
+    return (
+      <div className="login-apply">
+        <ApplyForm
+          me={null}
+          go={() => {}}
+          onBack={() => setStage('choose')}
+          onDraft={() => {
+            setIntent('driver');
+            setStage('confirm');
+          }}
+        />
+      </div>
+    );
+
+  const driverChoose = (
+    <div className="driver-choose">
+      <div className="alert info sm">
+        🛵 <b>Repartidores:</b> primero llenas tu solicitud (carnet, fotos, vehículo, números de confianza). El administrador la revisa y te da un <b>código de ingreso</b>.
+      </div>
+      <button className="btn primary block lg" onClick={() => setStage('form')}>
+        📝 Soy nuevo: llenar mi solicitud
+      </button>
+      <button
+        className="btn block lg"
+        onClick={() => {
+          setIntent('driver');
+          setStage('code');
+        }}
+      >
+        🔑 Ya envié mi solicitud / tengo mi código
+      </button>
     </div>
   );
+  const driverConfirm =
+    stage === 'confirm' ? (
+      <div className="alert success-box sm">
+        ✅ <b>Tu solicitud está lista.</b> Último paso: confirma tu identidad para enviarla al administrador.
+        <button
+          className="btn ghost sm"
+          onClick={() => {
+            clearDraft();
+            setStage('choose');
+          }}
+        >
+          Borrar y empezar de nuevo
+        </button>
+      </div>
+    ) : (
+      <div className="alert info sm">🔑 Entra con la misma cuenta con la que enviaste tu solicitud. Si ya te dieron el código, podrás escribirlo.</div>
+    );
+  const showLogin = who !== 'driver' || stage === 'confirm' || stage === 'code';
 
   return (
     <div className="login">
@@ -222,8 +273,9 @@ export default function Login({ session, claim }) {
       <div className="card login-card">
         <h2>Entrar</h2>
         <WhoTabs who={who} setWho={setWho} demo={!CLOUD} />
-        {who === 'driver' && driverNote}
-        {CLOUD ? (
+        {who === 'driver' && stage === 'choose' && driverChoose}
+        {who === 'driver' && stage !== 'choose' && driverConfirm}
+        {!showLogin ? null : CLOUD ? (
           <>
             <button
               className="btn block lg google"

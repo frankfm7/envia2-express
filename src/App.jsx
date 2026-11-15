@@ -2,7 +2,8 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useStore, useSession, useSync, markRead, claimShipment, CLOUD, getViewRole, ROLE_LABEL } from './lib/store';
 import AppLock from './components/AppLock';
 import { ProfilePage, SettingsPage, AddressesPage, Avatar } from './views/Account';
-import DriverApply from './views/DriverApply';
+import DriverApply, { submitDraftIfAny, loadDraft } from './views/DriverApply';
+import Promos from './views/Promos';
 import { INTENT_KEY } from './views/Login';
 import { BUSINESS_NAME, APP_VERSION } from './lib/config';
 import { LogoMark } from './components/Logo';
@@ -141,7 +142,9 @@ export default function App() {
     } catch {
       /* sin almacenamiento */
     }
-    if (intent === 'driver' && me.role !== 'driver' && me.role !== 'admin') go({ name: 'driver-apply' });
+    // Solicitud de repartidor llenada antes de iniciar sesión → se envía ahora
+    if (loadDraft()) submitDraftIfAny(me).then(() => go({ name: 'driver-apply' }));
+    else if (intent === 'driver' && me.role !== 'driver' && me.role !== 'admin') go({ name: 'driver-apply' });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [me?.id]);
 
@@ -151,7 +154,7 @@ export default function App() {
   if (!session || session.needsProfile) return <Login session={session} claim={!!claim} />;
   if (!me) return <Splash text="Cargando tu cuenta…" />;
 
-  const shared = ['profile', 'settings', 'addresses', 'driver-apply'].includes(view.name);
+  const shared = ['profile', 'settings', 'addresses', 'driver-apply', 'promos'].includes(view.name);
 
   return (
     <AppLock me={me}>
@@ -204,8 +207,9 @@ export default function App() {
       <main>
         {view.name === 'profile' && <ProfilePage me={me} go={go} />}
         {view.name === 'settings' && <SettingsPage me={me} go={go} />}
-        {view.name === 'addresses' && <AddressesPage me={me} />}
+        {view.name === 'addresses' && <AddressesPage me={me} go={go} />}
         {view.name === 'driver-apply' && <DriverApply me={me} go={go} />}
+        {view.name === 'promos' && <Promos me={meView} go={go} />}
         {!shared && role === 'client' && <ClientApp me={meView} view={view} go={go} />}
         {!shared && role === 'driver' && <DriverApp me={meView} view={view} go={go} />}
         {!shared && role === 'admin' && <AdminApp me={meView} view={view} />}
@@ -230,10 +234,10 @@ const NAV = [
   ['home', '🏠', 'Inicio'],
   ['orders', '📦', 'Pedidos'],
   ['history', '🕑', 'Historial'],
-  ['addresses', '📍', 'Direcciones'],
+  ['promos', '🎁', 'Promociones'],
   ['settings', '⚙️', 'Configuración'],
 ];
-const NAV_OF = { new: 'home', quote: 'home', track: 'orders', job: 'orders', profile: 'settings', 'driver-apply': 'settings' };
+const NAV_OF = { new: 'home', quote: 'home', track: 'orders', job: 'orders', profile: 'settings', 'driver-apply': 'settings', addresses: 'settings' };
 
 /** Barra de menú inferior */
 function BottomNav({ view, go }) {

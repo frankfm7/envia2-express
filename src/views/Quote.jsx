@@ -61,7 +61,7 @@ export default function Quote({ onBack, onCreate, onAccept, role = 'staff' }) {
       `📏 Distancia por ruta: ${String(t.km).replace('.', ',')} km${route && !manualKm ? ` (≈ ${fmtMin(route.duration)})` : ''}\n\n` +
       t.lines.map((l) => `• ${l.label}: ${money(l.amount)}`).join('\n') +
       `\n\n💰 *Total: ${money(t.total)}*` +
-      (service === 'errand' ? ` + monto de la compra (adelantamos hasta Bs ${RULES.errandAdvanceCap})` : '') +
+      (service === 'errand' ? ` + monto de la compra.\n🛍️ Adelantas por QR mínimo el 50 % de la compra (y nunca menos que el envío); el saldo, al recibir.` : '') +
       `\n⏱️ ${RULES.freeWaitMin} min de espera gratis por parada; luego Bs ${RULES.waitBlockPrice} cada 10 min.\n¿Confirmamos? ✅`
     : '';
 

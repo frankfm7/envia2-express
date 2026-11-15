@@ -9,6 +9,7 @@ import { useStore, useSync, useEvidence, getState, updateShipment, updateUser, s
 import DriverNewDelivery from './DriverNewDelivery';
 import Quote from './Quote';
 import { TariffCard } from '../components/Tariff';
+import { driverEarning, computeTariff, RULES as TRULES } from '../lib/tariff';
 import { sendReceiptLink } from '../lib/receiptImage';
 import { claimLink } from './DeliveryProof';
 import { useEta, arrivalClock } from '../lib/useEta';
@@ -263,8 +264,8 @@ function DriverHomeInner({ me, shipments, jobs, go, tracker, section = 'home' })
           <b>{today.length}</b>
         </div>
         <div className="stat">
-          <span>Ganado hoy</span>
-          <b>{money(today.reduce((a, s) => a + (s.finalPrice ?? s.price ?? 0), 0))}</b>
+          <span>Tu ganancia hoy</span>
+          <b>{money(today.reduce((a, s) => a + driverEarning((s.finalPrice ?? s.price ?? 0) + (s.coupon?.discount || 0), s.routeKm || 0).net, 0))}</b>
         </div>
         <div className="stat">
           <span>Efectivo a rendir</span>
@@ -511,15 +512,7 @@ function Job({ s, me, back, tracker }) {
             </button>
           )}
           {active && (
-            <button
-              className="btn ghost danger block sm"
-              onClick={() => {
-                const reason = prompt('Motivo del problema (se avisará al cliente):', 'Nadie recibe en el domicilio');
-                if (!reason) return;
-                updateShipment(s.id, { incident: { reason, ts: Date.now(), pos: s.driverPos } }, { status: 'cancelled', note: `Incidencia: ${reason}` });
-                back();
-              }}
-            >
+            <button className="btn ghost danger block sm" onClick={() => setModal('problem')}>
               Reportar problema / no se pudo entregar
             </button>
           )}
@@ -568,6 +561,8 @@ function Job({ s, me, back, tracker }) {
               </button>
             </div>
             {tab === 'info' && (
+              <>
+              <JobMoney s={s} />
               <dl className="details">
                 <dt>Caja</dt>
                 <dd>
@@ -600,6 +595,7 @@ function Job({ s, me, back, tracker }) {
                 <dt>Destino</dt>
                 <dd>{s.dropoff.address}</dd>
               </dl>
+              </>
             )}
             {tab === 'history' && <Timeline shipment={s} />}
           </div>
@@ -625,6 +621,7 @@ function Job({ s, me, back, tracker }) {
           </button>
         </Modal>
       )}
+      {modal === 'problem' && <ProblemModal s={s} onClose={() => setModal(null)} back={back} />}
       {modal === 'deliver' && (
         <Modal title="Prueba de entrega" onClose={() => setModal(null)}>
           <DeliveryProof s={s} me={me} onCancel={() => setModal(null)} onDone={() => setModal('receipt')} />
@@ -687,4 +684,109 @@ function usePublicSync(me, shipments) {
       }
     }
   }, [shipments, me.id]);
+}
+
+/** Montos del pedido para el repartidor: precio, cupón, adelanto, ganancia y ajuste según tabla */
+function JobMoney({ s }) {
+  const [adj, setAdj] = useState(false);
+  const [km, setKm] = useState(s.routeKm || '');
+  const full = (s.price || 0) + (s.coupon?.discount || 0);
+  const e = driverEarning(full, s.routeKm || 0);
+  const t = Number(km) > 0 ? computeTariff({ km: Number(km), service: s.service || 'simple', weightKg: Number(s.weight) || 0 }) : null;
+  const newPrice = t ? Math.max(0, Math.round((t.total - (t.total * (s.coupon?.pct || 0)) / 100) * 10) / 10) : null;
+  return (
+    <div className="job-money">
+      <div className="row between">
+        <span>Cobrar al cliente (envío)</span>
+        <b>{money(s.price)}</b>
+      </div>
+      {s.coupon && (
+        <div className="row between sm">
+          <span>🎫 Cupón {s.coupon.pct === 100 ? 'envío gratis' : `${s.coupon.pct} %`} (lo cubre la empresa)</span>
+          <span>{money(s.coupon.discount)}</span>
+        </div>
+      )}
+      {s.advance && (
+        <div className="row between sm">
+          <span>💳 Adelanto por QR {s.advance.paid ? '(pagado' + (s.advance.hasProof ? ', con comprobante)' : ')') : '(pendiente)'}</span>
+          <span>{money(s.advance.amount)}</span>
+        </div>
+      )}
+      {s.service === 'errand' && <div className="alert warn sm">🛍️ No pongas tu dinero: compra solo con el adelanto confirmado. Compra: {s.purchase}</div>}
+      {s.highValue && <div className="alert warn sm">💼 Valor declarado {money(s.declaredValue)}: más de Bs {TRULES.maxGoodsValue}, precio por acuerdo previo.</div>}
+      <div className="earning">
+        💰 Tu ganancia estimada: <b>{money(e.net)}</b> <span className="muted sm">(gasolina/desgaste ≈ {money(e.cost)})</span>
+      </div>
+      {!['delivered', 'cancelled'].includes(s.status) &&
+        (adj ? (
+          <div className="adjust">
+            <label className="sm">Km por la ruta (medidos en Google Maps)</label>
+            <div className="row gap">
+              <input type="number" min="0" step="0.1" value={km} onChange={(ev) => setKm(ev.target.value)} aria-label="Km medidos" />
+              <button
+                className="btn primary sm"
+                disabled={!t || newPrice === s.price}
+                onClick={() => {
+                  updateShipment(
+                    s.id,
+                    { price: newPrice, originalPrice: t.total, routeKm: t.km, kmManual: true, tariff: { lines: t.lines, total: t.total, km: t.km }, ...(s.coupon && { coupon: { ...s.coupon, discount: Math.round((t.total - newPrice) * 10) / 10 } }) },
+                    { notify: [{ to: s.clientId, text: `${s.code}: precio ajustado según la tabla (${String(t.km).replace('.', ',')} km por la ruta): ${money(newPrice)}` }] }
+                  );
+                  setAdj(false);
+                }}
+              >
+                Aplicar {newPrice != null ? money(newPrice) : ''}
+              </button>
+            </div>
+            {t && <span className="muted sm">{t.lines.map((l) => `${l.label}: ${money(l.amount)}`).join(' · ')}</span>}
+          </div>
+        ) : (
+          <button className="btn ghost sm" onClick={() => setAdj(true)}>
+            ✏️ Ajustar precio según la tabla
+          </button>
+        ))}
+    </div>
+  );
+}
+
+/** No se pudo entregar: dejar en oficina (depósito) o cancelar */
+function ProblemModal({ s, onClose, back }) {
+  const [reason, setReason] = useState('Nadie recibe / no contesta');
+  const reasons = ['Nadie recibe / no contesta', 'No está en el punto', 'Dirección incorrecta', 'El cliente rechazó el paquete'];
+  return (
+    <Modal title="No se pudo entregar" onClose={onClose}>
+      <div className="chips">
+        {reasons.map((r) => (
+          <button key={r} type="button" className={`chip ${reason === r ? 'on' : ''}`} onClick={() => setReason(r)}>
+            {r}
+          </button>
+        ))}
+      </div>
+      <input value={reason} onChange={(e) => setReason(e.target.value)} />
+      <div className="alert info sm" style={{ marginTop: 10 }}>
+        🏢 Según las condiciones, el paquete se deja en <b>oficina</b> con un cargo de Bs {TRULES.storagePerDay} por día. El cliente puede pedir <b>reenvío</b> (+Bs {TRULES.redelivery}).
+      </div>
+      <button
+        className="btn primary block lg"
+        onClick={() => {
+          updateShipment(s.id, { incident: { reason, ts: Date.now(), pos: s.driverPos || null }, storedAt: Date.now(), route: null }, { status: 'stored', note: `No entregado: ${reason}. Quedó en oficina.` });
+          onClose();
+          back();
+        }}
+      >
+        🏢 Dejar en oficina
+      </button>
+      <button
+        className="btn ghost danger block"
+        onClick={() => {
+          if (!confirm('¿Cancelar el envío?')) return;
+          updateShipment(s.id, { incident: { reason, ts: Date.now(), pos: s.driverPos || null } }, { status: 'cancelled', note: `Incidencia: ${reason}` });
+          onClose();
+          back();
+        }}
+      >
+        Cancelar el envío
+      </button>
+    </Modal>
+  );
 }

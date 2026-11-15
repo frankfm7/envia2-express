@@ -42,7 +42,8 @@ export default function DeliveryProof({ s, me, onDone, onCancel }) {
   const shippingTotal = (Number(s.price) || 0) + wp.amount + wd.amount + extraSurcharge;
   const purchase = s.service === 'errand' ? Number(purchaseReal) || 0 : 0;
   const productCollect = Number(s.collectAmount) || 0;
-  const toCollect = s.payment === 'prepaid' ? purchase + productCollect : shippingTotal + purchase + productCollect;
+  const advancePaid = s.advance?.paid ? Number(s.advance.amount) || 0 : 0; // adelanto por QR (mandados)
+  const toCollect = Math.max(0, (s.payment === 'prepaid' ? purchase + productCollect : shippingTotal + purchase + productCollect) - advancePaid);
   const [bio, setBio] = useState(false);
   const [useBio, setUseBio] = useState(true);
   const [busy, setBusy] = useState(false);
@@ -86,6 +87,8 @@ export default function DeliveryProof({ s, me, onDone, onCancel }) {
           shipping: shippingTotal,
           purchase,
           product: productCollect,
+          advance: advancePaid,
+          coupon: s.coupon || null,
           total: toCollect,
         },
         pos: p,
@@ -203,6 +206,7 @@ export default function DeliveryProof({ s, me, onDone, onCancel }) {
               {signature && <img src={signature} alt="" className="thumb sig" />}
             </div>
             <div>📍 Se guardará tu ubicación GPS, fecha y hora, y un sello digital anti-alteración.</div>
+            <div className="alert info sm">📸 Pide al cliente que revise el paquete ahora: los reclamos por faltantes o daños solo se aceptan en el momento de la entrega.</div>
           </div>
           <div className="charge">
             <b>💰 Cobro final</b>
@@ -241,6 +245,18 @@ export default function DeliveryProof({ s, me, onDone, onCancel }) {
               <div className="row between">
                 <span>Cobro del producto</span>
                 <b>{money(productCollect)}</b>
+              </div>
+            )}
+            {!!s.coupon && (
+              <div className="row between">
+                <span>🎫 Cupón {s.coupon.pct === 100 ? 'envío gratis' : `${s.coupon.pct} %`} (ya descontado)</span>
+                <b>− {money(s.coupon.discount)}</b>
+              </div>
+            )}
+            {!!advancePaid && (
+              <div className="row between">
+                <span>💳 Adelanto pagado por QR</span>
+                <b>− {money(advancePaid)}</b>
               </div>
             )}
             <div className="row between total">

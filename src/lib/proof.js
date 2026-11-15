@@ -1,7 +1,7 @@
 // Evidencias de entrega: compresión de fotos, sello SHA-256 y biometría (huella/rostro).
 
 /** Reduce una foto de la cámara a JPEG ~1000px para guardarla y enviarla rápido. */
-export function compressImage(file, max = 900, quality = 0.62) {
+export function compressImage(file, max = 900, quality = 0.62, stamp = true) {
   return new Promise((resolve, reject) => {
     const img = new Image();
     img.onload = () => {
@@ -12,13 +12,15 @@ export function compressImage(file, max = 900, quality = 0.62) {
       const ctx = c.getContext('2d');
       ctx.drawImage(img, 0, 0, c.width, c.height);
       // Marca de agua con fecha/hora para que la foto tenga valor como evidencia.
-      const stamp = new Date().toLocaleString('es');
+      if (stamp) {
+      const text = new Date().toLocaleString('es');
       ctx.font = `${Math.max(14, c.width / 40)}px sans-serif`;
-      const w = ctx.measureText(stamp).width + 16;
+      const w = ctx.measureText(text).width + 16;
       ctx.fillStyle = 'rgba(0,0,0,.55)';
       ctx.fillRect(c.width - w - 8, c.height - 36, w, 28);
       ctx.fillStyle = '#fff';
-      ctx.fillText(stamp, c.width - w, c.height - 16);
+      ctx.fillText(text, c.width - w, c.height - 16);
+      }
       URL.revokeObjectURL(img.src);
       resolve(c.toDataURL('image/jpeg', quality));
     };

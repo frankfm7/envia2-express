@@ -8,7 +8,7 @@ Orden recomendado:
                                      4. Base de datos (Firebase) ◄─┘  (opcional al inicio: sin ella funciona en modo demo)
 ```
 
-> **Versión:** la app es la **versión 1.0.0** y se queda así hasta que se decida un cambio grande. Los ZIP que recibes se numeran aparte (`envia2-express-v4.zip`, `-v3`…) solo para saber cuál es el más nuevo. Ver `CHANGELOG.md`.
+> **Versión:** la app es la **versión 1.0.0** y se queda así hasta que se decida un cambio grande. Los ZIP que recibes se numeran aparte (`envia2-express-v4.1.zip`, `-v3`…) solo para saber cuál es el más nuevo. Ver `CHANGELOG.md`.
 
 ---
 
@@ -27,7 +27,7 @@ git --version
 
 Si ambos muestran un número de versión, está listo.
 
-4. Descomprime **envia2-express-v4.zip**, por ejemplo en el Escritorio. Queda la carpeta `envia2-express`.
+4. Descomprime **envia2-express-v4.1.zip**, por ejemplo en el Escritorio. Queda la carpeta `envia2-express`.
 
 ---
 
@@ -105,7 +105,7 @@ cd C:\Users\TU_USUARIO\Desktop\envia2-express
 git add .
 ```
 ```bash
-git commit -m "Actualizacion v4: menu inferior, perfil, celular, repartidores con codigo"
+git commit -m "Actualizacion 4.1: tarifas finales, promociones, condiciones"
 ```
 ```bash
 git push
@@ -156,12 +156,31 @@ La app **ya trae lista la conexión a Firebase** (Google): plan gratis sin tarje
    - `projectId` → `VITE_FIREBASE_PROJECT_ID`
    - `appId` → `VITE_FIREBASE_APP_ID`
 3. *Compilación → Authentication → Comenzar → Sign-in method → Google → Habilitar → Guardar*.
-   - **Entrar con número de celular:** en *Sign-in method* → **Teléfono** → *Habilitar* → Guardar. Luego en *Authentication → Settings → Política de regiones de SMS* permite **Bolivia**.
-   - Firebase puede pedirte activar la facturación (plan *Blaze*) para enviar SMS reales; cada SMS tiene un costo pequeño. Para **probar gratis**, agrega números de prueba en *Sign-in method → Teléfono → Números de teléfono para pruebas* (ej. `+591 70000000` con código `123456`). Si no quieres pagar SMS, deja solo Google: la app funciona igual.
+   - Para **entrar con número de celular** sigue la sección **"📱 Activar el ingreso con número de celular"** (más abajo).
 4. *Compilación → Firestore Database → Crear base de datos* → ubicación `southamerica-east1` (São Paulo, la más cercana) → **modo producción**.
 5. Firestore → pestaña **Reglas** → pega el contenido de `firestore.rules`, cambia `tu_correo@gmail.com` por **tu Gmail** → **Publicar**.
-   > ⚠️ Cada vez que recibas un ZIP que diga "reglas actualizadas" en el CHANGELOG, vuelve a pegar y publicar `firestore.rules` (la v4 las cambió).
+   > ⚠️ Cada vez que recibas un ZIP que diga "reglas actualizadas" en el CHANGELOG, vuelve a pegar y publicar `firestore.rules` (la 4 y la 4.1 las cambiaron).
 6. *Authentication → Settings → Dominios autorizados* → **Agregar dominio** → `envia2-express.netlify.app` (tu dominio de Netlify, sin `https://`).
+
+### 📱 Activar el ingreso con número de celular
+
+Si en la app sale *"El ingreso por celular no está activado en Firebase"*, falta este paso:
+
+1. Firebase → **Authentication** → pestaña **Sign-in method** (Método de acceso) → **Agregar proveedor nuevo** → **Teléfono** → activa el interruptor **Habilitar** → **Guardar**.
+2. **Authentication → Settings** (Configuración) → **Política de regiones de SMS** → elige *Permitir* y agrega **Bolivia** → Guardar.
+3. **Authentication → Settings → Dominios autorizados**: debe estar tu dominio de Netlify (ej. `envia2-express.netlify.app`).
+4. **Probar gratis sin SMS reales:** en *Sign-in method → Teléfono → Números de teléfono para pruebas* agrega, por ejemplo, `+591 70000000` con el código `123456`. En la app escribe `70000000` y luego `123456`.
+5. **SMS reales:** Firebase cobra los SMS. Si al pedir el código aparece un error de facturación o de cuota, en Firebase → ⚙️ → *Uso y facturación* cambia al plan **Blaze** (pago por uso) y pon una **alerta de presupuesto** baja (ej. USD 5) para no tener sorpresas. Revisa el precio por SMS a Bolivia en la página de precios de Firebase. Si no quieres pagar SMS, deja solo **Google**: la app funciona igual.
+
+### 🔐 Si la app pide iniciar sesión otra vez cada hora
+
+La app ya guarda la sesión en el celular. Si aun así se cierra a la hora, casi siempre es porque la **clave de API está restringida** y Firebase no puede renovar el acceso:
+
+1. Entra a https://console.cloud.google.com → elige tu proyecto → **APIs y servicios → Credenciales**.
+2. Abre la clave **"Browser key (auto created by Firebase)"**.
+3. En *Restricciones de API*: deja **No restringir la clave**, o si la restringes, incluye **Identity Toolkit API** y **Token Service API**.
+4. En *Restricciones de aplicaciones* (si usas "Sitios web"), agrega `https://envia2-express.netlify.app/*` y `https://TU-PROYECTO.firebaseapp.com/*`.
+5. Guarda y espera 5 minutos.
 
 ### 4.2 Poner las claves en Netlify
 Netlify → tu sitio → *Site configuration → Environment variables → Add a variable*:
@@ -192,12 +211,14 @@ Luego *Deploys → Trigger deploy → Deploy site* para que tome las claves.
 3. **Menú inferior:** 🏠 Inicio · 📦 Pedidos · 🕑 Historial · 📍 Direcciones · ⚙️ Configuración. Arriba a la derecha, tu **foto** abre tu perfil.
 4. **Clientes:** entran con Google o su número de celular, y listo (solo nombre y celular la primera vez).
 5. **Repartidores nuevos:**
-   1. En la pantalla de entrada eligen **Soy repartidor** y entran con Google o celular.
-   2. Llenan la solicitud: foto, carnet (número y fotos de los dos lados), vehículo (marca, color, placa y foto), licencia opcional y **2 números de confianza**.
+   1. En la pantalla de entrada eligen **Soy repartidor → Soy nuevo: llenar mi solicitud** y llenan TODO **antes de iniciar sesión**: foto, carnet (número y fotos de los dos lados), domicilio, vehículo (marca, color, placa y foto), licencia opcional y **2 números de confianza**.
+   2. Al final confirman su identidad con Google o celular y la solicitud te llega.
    3. Tú la ves en **Inicio → 🛵 Repartidores → Revisar** → **Aprobar y generar código** → **Enviar código por WhatsApp** (o se lo das en persona).
    4. El repartidor entra a *Configuración → Trabajar como repartidor → Ingresar código* y su cuenta se activa. Sin el código correcto no puede activarse (las reglas de Firebase lo verifican).
    5. Puedes **bloquear** o desbloquear a un repartidor en esa misma pestaña.
-6. **Seguridad (opcional, cada usuario):** *Configuración → Seguridad* → código de 4 dígitos, patrón o huella/Face ID. Se pide al abrir la app y al volver después de 1 minuto. Si alguien lo olvida, toca "¿Lo olvidaste? Cerrar sesión" y vuelve a entrar con Google o celular.
+6. **Promociones (menú 🎁):** puntos por envío, tarjeta de sellos (6 envíos → 50 %, 10 envíos → gratis), cupones y ruleta. Premios y probabilidades en `src/lib/promo.js`.
+7. **QR de cobro:** *Inicio → Panel → 💳 QR de cobro* → sube tu QR; los clientes lo ven al pagar el adelanto de los mandados.
+8. **Seguridad (opcional, cada usuario):** *Configuración → Seguridad* → código de 4 dígitos, patrón o huella/Face ID. Se pide al abrir la app y al volver después de 1 minuto. Si alguien lo olvida, toca "¿Lo olvidaste? Cerrar sesión" y vuelve a entrar con Google o celular.
 7. **Cajas de catálogo** (Yanbal, Ésika, L'Bel, Cyzone…): *Inicio → 💄 Catálogo* (igual que antes).
 8. **Instalar en el celular:** Chrome → menú ⋮ → *Instalar aplicación* (iPhone: Safari → Compartir → *Agregar a inicio*).
 
@@ -231,6 +252,8 @@ Luego *Deploys → Trigger deploy → Deploy site* para que tome las claves.
 
 | Problema | Solución |
 |---|---|
+| Se cierra la sesión cada hora | Ver la sección "Si la app pide iniciar sesión otra vez cada hora" (clave de API). |
+| "El ingreso por celular no está activado" | Ver la sección "Activar el ingreso con número de celular". |
 | `git` o `npm` "no se reconoce como comando" | Instala Git / Node (Paso 0) y **cierra y abre** el CMD. |
 | `git push` pide usuario/contraseña | Usa la ventana de inicio de sesión de GitHub; si no aparece, instala Git de nuevo con las opciones por defecto (incluye "Git Credential Manager"). |
 | `error: remote origin already exists` | Ya estaba conectado; sigue con `git push -u origin main`. |

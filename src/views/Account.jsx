@@ -61,7 +61,7 @@ export function ProfilePage({ me, go }) {
         <Avatar me={me} size={96} />
         <label className="btn ghost sm">
           📷 Cambiar foto
-          <input type="file" accept="image/*" hidden onChange={async (e) => e.target.files?.[0] && updateUser(me.id, { photo: await compressImage(e.target.files[0], 320, 0.8) })} />
+          <input type="file" accept="image/*" hidden onChange={async (e) => e.target.files?.[0] && updateUser(me.id, { photo: await compressImage(e.target.files[0], 320, 0.8, false) })} />
         </label>
         <h2>{me.name}</h2>
         <div className="muted sm">{me.email || me.phone}</div>
@@ -209,6 +209,17 @@ export function SettingsPage({ me, go }) {
         <span className="muted sm">Ver perfil ›</span>
       </button>
 
+      <button className="card profile-row" onClick={() => go({ name: 'addresses' })}>
+        <span className="row gap">
+          <span style={{ fontSize: 26 }}>📍</span>
+          <span>
+            <b>Mis direcciones</b>
+            <div className="muted sm">{(me.addresses || []).length ? `${me.addresses.length} guardada(s): ${me.addresses.map((a) => a.label).join(', ')}` : 'Casa, trabajo… para pedir con un toque'}</div>
+          </span>
+        </span>
+        <span className="muted sm">›</span>
+      </button>
+
       {allowedRoles(me).length > 1 && (
         <div className="card">
           <h3>Cambiar de perfil</h3>
@@ -278,7 +289,7 @@ export function SettingsPage({ me, go }) {
 // ─────────────────────────────────────────────────────────────────────────────
 const LABELS = ['🏠 Casa', '💼 Trabajo', '🏪 Tienda', '👪 Familia'];
 
-export function AddressesPage({ me }) {
+export function AddressesPage({ me, go }) {
   const list = me.addresses || [];
   const [editing, setEditing] = useState(null);
   const blank = { label: '', address: '', lat: null, lng: null, reference: '' };
@@ -336,6 +347,9 @@ export function AddressesPage({ me }) {
 
   return (
     <div className="page narrow">
+      <button className="btn ghost sm" onClick={() => go({ name: 'settings' })}>
+        ← Configuración
+      </button>
       <div className="row between">
         <h2>📍 Mis direcciones</h2>
         <button className="btn primary" onClick={() => start()}>
