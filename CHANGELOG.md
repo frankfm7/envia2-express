@@ -6,6 +6,33 @@
 
 ---
 
+## Entrega 4.2 (ZIP) — 15 nov 2026 · app versión 1.0.0 · ⚠️ reglas de Firebase actualizadas
+
+**Ingreso**
+- **Continuar con Facebook** (gratis). Se ocultó el ingreso por SMS porque Firebase lo cobra (se puede reactivar con `VITE_PHONE_LOGIN=true`).
+- Página de **política de privacidad** (`/privacidad.html`) que pide Meta para publicar el ingreso con Facebook.
+
+**Inicio**
+- **Avisos animados** tipo "historias" (barras de progreso, se deslizan solos o con el dedo): cómo pedir (cliente), cómo trabajar y recomendaciones (repartidor), atajos (administrador). Las **ofertas vigentes** salen primero.
+
+**Administrador**
+- **En línea ahora**: repartidores conectados, qué están haciendo y botón para llamar (en el Panel y en Repartidores).
+- **Mejores repartidores del mes** con **🎉 Felicitar** (insignia en su perfil, aviso en la app y mensaje por WhatsApp).
+- **Suspender** por días (con motivo), **bloquear**, **reactivar** y **eliminar** repartidores.
+- **📈 Informes**: General (hoy, ayer, en curso y próximos), Diario (cualquier fecha pasada), Mensual, Trimestral y Anual, con comparación contra el período anterior, por repartidor y por servicio; imprimir/PDF, Excel y envío por WhatsApp.
+- **🏷️ Ofertas**: primera entrega del día, primer pedido, todos los pedidos (por fechas, días y horas) y **códigos promocionales**; encender/apagar, uso y descuentos dados, anunciar por WhatsApp.
+- **WhatsApp de asistencia** configurable.
+
+**Repartidor**
+- **Ver y actualizar sus datos** (fotos, carnet, vehículo, contactos) desde Configuración; el administrador ve "Actualizó sus datos".
+- **Reenviar comprobante** desde el Historial; aviso cuando el cliente lo pide.
+- Si está suspendido o bloqueado, ve el motivo y hasta cuándo.
+
+**Cliente**
+- Ofertas y **códigos promocionales** aplicados solos al pedir (un solo descuento: el mayor entre oferta y cupón).
+- **Pedir mi comprobante** al repartidor (además de descargarlo).
+- Configuración: **Apariencia** (claro / oscuro / automático, letra grande), **código promocional**, **asistencia por WhatsApp**, condiciones del servicio y **recomendar la app**.
+
 ## Entrega 4.1 (ZIP) — 15 nov 2026 · app versión 1.0.0 · ⚠️ reglas de Firebase actualizadas
 
 **Tarifas y condiciones**

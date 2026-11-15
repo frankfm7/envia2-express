@@ -7,7 +7,12 @@ import { updateUser, logout, allowedRoles, getViewRole, setViewRole, ROLE_LABEL,
 import { getLock, setLock, clearLock } from '../lib/lock';
 import { biometricAvailable, biometricConfirm, compressImage } from '../lib/proof';
 import { reverseGeocode } from '../lib/geo';
-import { APP_VERSION, BUSINESS_NAME } from '../lib/config';
+import { APP_VERSION, BUSINESS_NAME, whatsappLink } from '../lib/config';
+import { getAppearance, setAppearance } from '../lib/appearance';
+import { checkCode } from '../lib/offers';
+import { CONDITIONS } from '../lib/tariff';
+import { useSettings } from '../lib/store';
+import { WhatsAppIcon } from '../components/Common';
 
 /** Foto de perfil (Google) o inicial del nombre */
 export function Avatar({ me, size = 36 }) {
@@ -250,7 +255,12 @@ export function SettingsPage({ me, go }) {
         <div className="card">
           <h3>🛵 Trabajar como repartidor</h3>
           {me.role === 'driver' && me.approved ? (
-            <p className="sm">✔ Eres repartidor aprobado.</p>
+            <>
+              <p className="sm">✔ Eres repartidor aprobado.</p>
+              <button className="btn" onClick={() => go({ name: 'driver-apply' })}>
+                📝 Ver / actualizar mis datos de repartidor
+              </button>
+            </>
           ) : (
             <>
               <p className="sm">
@@ -270,7 +280,40 @@ export function SettingsPage({ me, go }) {
         </div>
       )}
 
+      <AppearanceCard />
+      <PromoCodeCard me={me} />
+      <SupportCard me={me} />
+
       <TariffCard forDriver={me.role !== 'client'} />
+
+      <details className="card">
+        <summary>
+          <b>📋 Condiciones del servicio</b>
+        </summary>
+        <ol className="sm">
+          {CONDITIONS.map(([t, d]) => (
+            <li key={t} style={{ marginBottom: 6 }}>
+              <b>{t}:</b> {d}
+            </li>
+          ))}
+        </ol>
+      </details>
+
+      <div className="card">
+        <h3>📣 Recomienda la app</h3>
+        <p className="muted sm">Comparte {BUSINESS_NAME} con tus amigos y familiares.</p>
+        <button
+          className="btn"
+          onClick={() => {
+            const url = location.origin + location.pathname;
+            const text = `🛵 Te recomiendo ${BUSINESS_NAME}: envíos y mandados con rastreo en vivo. ${url}`;
+            if (navigator.share) navigator.share({ title: BUSINESS_NAME, text, url }).catch(() => {});
+            else window.open(whatsappLink('', text), '_blank');
+          }}
+        >
+          📤 Compartir
+        </button>
+      </div>
 
       <div className="card">
         <h3>ℹ️ Acerca de</h3>
@@ -377,6 +420,81 @@ export function AddressesPage({ me, go }) {
           </div>
         ))}
       </div>
+    </div>
+  );
+}
+
+function AppearanceCard() {
+  const [a, setA] = useState(getAppearance);
+  const upd = (p) => setA(setAppearance(p));
+  return (
+    <div className="card">
+      <h3>🎨 Apariencia</h3>
+      <label className="sm muted">Tema</label>
+      <div className="seg">
+        {[
+          ['auto', '⚙️ Automático'],
+          ['light', '☀️ Claro'],
+          ['dark', '🌙 Oscuro'],
+        ].map(([k, l]) => (
+          <button key={k} className={a.theme === k ? 'on' : ''} onClick={() => upd({ theme: k })}>
+            {l}
+          </button>
+        ))}
+      </div>
+      <label className="sm muted">Tamaño de letra</label>
+      <div className="seg">
+        {[
+          ['md', 'Normal'],
+          ['lg', 'Grande'],
+        ].map(([k, l]) => (
+          <button key={k} className={a.font === k ? 'on' : ''} onClick={() => upd({ font: k })}>
+            {l}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function PromoCodeCard({ me }) {
+  const settings = useSettings();
+  const [code, setCode] = useState(me.promoCode || '');
+  const [msg, setMsg] = useState('');
+  if (me.role !== 'client') return null;
+  return (
+    <div className="card">
+      <h3>🏷️ Código promocional</h3>
+      <p className="muted sm">Si tienes un código de descuento, guárdalo aquí y se aplicará en tu próximo pedido.</p>
+      <div className="row gap">
+        <input value={code} onChange={(e) => setCode(e.target.value.toUpperCase())} placeholder="Ej. ORURO20" aria-label="Código promocional" />
+        <button
+          className="btn primary"
+          onClick={() => {
+            const o = checkCode(settings, code);
+            if (!o) return setMsg('✖ Código no válido o vencido');
+            updateUser(me.id, { promoCode: code.trim().toUpperCase() });
+            setMsg(`✔ Código guardado: ${o.pct} % de descuento en tu próximo pedido`);
+          }}
+        >
+          Canjear
+        </button>
+      </div>
+      {msg && <p className="sm">{msg}</p>}
+    </div>
+  );
+}
+
+function SupportCard() {
+  const settings = useSettings();
+  if (!settings.supportPhone) return null;
+  return (
+    <div className="card">
+      <h3>💬 Asistencia por WhatsApp</h3>
+      <p className="muted sm">¿Tienes un problema con un pedido o una duda? Escríbenos.</p>
+      <a className="btn wa block" href={whatsappLink(settings.supportPhone, `Hola ${BUSINESS_NAME}, necesito ayuda con la app.`)} target="_blank" rel="noreferrer">
+        <WhatsAppIcon /> Escribir a soporte
+      </a>
     </div>
   );
 }

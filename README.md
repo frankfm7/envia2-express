@@ -1,4 +1,4 @@
-# 🛵 Envia2 Express — app versión 1.0.0 · entrega 4.1
+# 🛵 Envia2 Express — app versión 1.0.0 · entrega 4.2
 
 Ver el historial de versiones en [CHANGELOG.md](CHANGELOG.md).
 
@@ -71,6 +71,9 @@ Las 8 condiciones del servicio están en el mismo archivo (`CONDITIONS`) y se mu
 | Datos y documentos de repartidores | ❌ | Solo los suyos | ✅ |
 | Códigos de ingreso de repartidores | ❌ | ❌ | ✅ |
 | Promociones: puntos, cupones, ruleta | ✅ (los suyos) | Explicación | ✅ + estadísticas |
+| Informes diarios / mensuales / anuales | ❌ | ❌ | ✅ |
+| Crear ofertas y códigos | ❌ (los usa) | ❌ | ✅ |
+| Suspender / bloquear / felicitar repartidores | ❌ | ❌ | ✅ |
 | QR de cobro | ✅ (para pagar) | ✅ | ✅ (lo sube) |
 | Todos los pedidos | Solo los suyos | Disponibles + los suyos | ✅ todos |
 

@@ -3,7 +3,7 @@
 //  - Firestore con caché sin conexión: si no hay señal, todo (firmas, fotos,
 //    estados) se guarda en el celular y se sube solo cuando vuelve internet.
 import { initializeApp } from 'firebase/app';
-import { initializeAuth, indexedDBLocalPersistence, browserLocalPersistence, browserPopupRedirectResolver, GoogleAuthProvider, signInWithPopup, signInWithRedirect, getRedirectResult, onAuthStateChanged, signOut, RecaptchaVerifier, signInWithPhoneNumber } from 'firebase/auth';
+import { initializeAuth, indexedDBLocalPersistence, browserLocalPersistence, browserPopupRedirectResolver, GoogleAuthProvider, FacebookAuthProvider, signInWithPopup, signInWithRedirect, getRedirectResult, onAuthStateChanged, signOut, RecaptchaVerifier, signInWithPhoneNumber } from 'firebase/auth';
 import {
   initializeFirestore,
   persistentLocalCache,
@@ -244,6 +244,16 @@ export function createCloudBackend(ctx) {
     async loginGoogle() {
       const provider = new GoogleAuthProvider();
       provider.setCustomParameters({ prompt: 'select_account' });
+      return this.loginWith(provider);
+    },
+    /** Entrar con Facebook (gratis) */
+    async loginFacebook() {
+      const provider = new FacebookAuthProvider();
+      provider.addScope('email');
+      provider.addScope('public_profile');
+      return this.loginWith(provider);
+    },
+    async loginWith(provider) {
       try {
         await signInWithPopup(auth, provider);
       } catch (e) {

@@ -6,7 +6,10 @@ import { useStore, STATUS, ACTIVE, exportBackup, importBackup, resetAll, updateU
 import { compressImage } from '../lib/proof';
 import CatalogBoxes from './CatalogBoxes';
 import Quote from './Quote';
-import DriverAdmin from './DriverAdmin';
+import DriverAdmin, { OnlineNow } from './DriverAdmin';
+import Reports from './Reports';
+import OffersAdmin from './OffersAdmin';
+import HomeBanner from '../components/HomeBanner';
 import { fmtDate } from '../lib/geo';
 import { money, SIZES } from '../lib/config';
 
@@ -25,6 +28,12 @@ export default function AdminApp({ me, view }) {
         <button className={tab === 'drivers' ? 'on' : ''} onClick={() => setTab('drivers')}>
           🛵 Repartidores {pendingApps > 0 && <span className="count-inline">{pendingApps}</span>}
         </button>
+        <button className={tab === 'reports' ? 'on' : ''} onClick={() => setTab('reports')}>
+          📈 Informes
+        </button>
+        <button className={tab === 'offers' ? 'on' : ''} onClick={() => setTab('offers')}>
+          🏷️ Ofertas
+        </button>
         <button className={tab === 'catalog' ? 'on' : ''} onClick={() => setTab('catalog')}>
           💄 Catálogo
         </button>
@@ -32,7 +41,17 @@ export default function AdminApp({ me, view }) {
           💲 Tarifas
         </button>
       </div>
-      {tab === 'panel' ? <Dashboard mode="panel" /> : tab === 'drivers' ? <DriverAdmin /> : tab === 'catalog' ? <CatalogBoxes me={me} /> : <Quote onBack={() => setTab('panel')} />}
+      {tab === 'panel' && (
+        <>
+          <HomeBanner role="admin" />
+          <Dashboard mode="panel" />
+        </>
+      )}
+      {tab === 'drivers' && <DriverAdmin />}
+      {tab === 'reports' && <Reports />}
+      {tab === 'offers' && <OffersAdmin />}
+      {tab === 'catalog' && <CatalogBoxes me={me} />}
+      {tab === 'quote' && <Quote onBack={() => setTab('panel')} />}
     </div>
   );
 }
@@ -125,6 +144,7 @@ function Dashboard({ mode = 'panel' }) {
         </div>
       </div>
 
+      <OnlineNow drivers={drivers} shipments={shipments} />
       <div className="split">
         <div className="split-map">
           <h3 className="section-title">Repartidores en ruta ahora</h3>
@@ -285,7 +305,7 @@ function QrCard() {
   const [name, setName] = useState(st.qrName || '');
   return (
     <div className="card">
-      <h3>💳 QR de cobro</h3>
+      <h3>💳 QR de cobro y soporte</h3>
       <p className="muted sm">Los clientes lo ven al pagar el adelanto de los mandados (mínimo 50 % de la compra).</p>
       {st.qrImage && (
         <div className="qr-box">
@@ -303,6 +323,7 @@ function QrCard() {
           </button>
         )}
       </div>
+      <SupportPhone st={st} />
       <div className="field" style={{ marginTop: 8 }}>
         <label>Titular / banco (se muestra bajo el QR)</label>
         <div className="row gap">
@@ -311,6 +332,21 @@ function QrCard() {
             Guardar
           </button>
         </div>
+      </div>
+    </div>
+  );
+}
+
+function SupportPhone({ st }) {
+  const [v, setV] = useState(st.supportPhone || '');
+  return (
+    <div className="field" style={{ marginTop: 8 }}>
+      <label>WhatsApp de asistencia (lo ven todos en Configuración)</label>
+      <div className="row gap">
+        <input value={v} onChange={(e) => setV(e.target.value)} inputMode="tel" placeholder="7 123 4567" />
+        <button className="btn sm" onClick={() => saveSettings({ supportPhone: v.replace(/[^\d+]/g, '') })}>
+          Guardar
+        </button>
       </div>
     </div>
   );

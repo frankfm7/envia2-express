@@ -8,7 +8,7 @@ Orden recomendado:
                                      4. Base de datos (Firebase) ◄─┘  (opcional al inicio: sin ella funciona en modo demo)
 ```
 
-> **Versión:** la app es la **versión 1.0.0** y se queda así hasta que se decida un cambio grande. Los ZIP que recibes se numeran aparte (`envia2-express-v4.1.zip`, `-v3`…) solo para saber cuál es el más nuevo. Ver `CHANGELOG.md`.
+> **Versión:** la app es la **versión 1.0.0** y se queda así hasta que se decida un cambio grande. Los ZIP que recibes se numeran aparte (`envia2-express-v4.2.zip`, `-v3`…) solo para saber cuál es el más nuevo. Ver `CHANGELOG.md`.
 
 ---
 
@@ -27,7 +27,7 @@ git --version
 
 Si ambos muestran un número de versión, está listo.
 
-4. Descomprime **envia2-express-v4.1.zip**, por ejemplo en el Escritorio. Queda la carpeta `envia2-express`.
+4. Descomprime **envia2-express-v4.2.zip**, por ejemplo en el Escritorio. Queda la carpeta `envia2-express`.
 
 ---
 
@@ -105,7 +105,7 @@ cd C:\Users\TU_USUARIO\Desktop\envia2-express
 git add .
 ```
 ```bash
-git commit -m "Actualizacion 4.1: tarifas finales, promociones, condiciones"
+git commit -m "Actualizacion 4.2: Facebook, informes, ofertas, repartidores"
 ```
 ```bash
 git push
@@ -162,9 +162,32 @@ La app **ya trae lista la conexión a Firebase** (Google): plan gratis sin tarje
    > ⚠️ Cada vez que recibas un ZIP que diga "reglas actualizadas" en el CHANGELOG, vuelve a pegar y publicar `firestore.rules` (la 4 y la 4.1 las cambiaron).
 6. *Authentication → Settings → Dominios autorizados* → **Agregar dominio** → `envia2-express.netlify.app` (tu dominio de Netlify, sin `https://`).
 
-### 📱 Activar el ingreso con número de celular
+### 🔵 Activar "Continuar con Facebook" (gratis)
 
-Si en la app sale *"El ingreso por celular no está activado en Firebase"*, falta este paso:
+**A. En Meta (Facebook)**
+1. Entra a https://developers.facebook.com con tu cuenta de Facebook → **Mis apps → Crear app**.
+2. Caso de uso: **"Autenticar y solicitar datos a los usuarios con el inicio de sesión con Facebook"** → nombre `Envia2 Express` → crear.
+3. **Configuración de la app → Básica**:
+   - Copia el **Identificador de la app** (App ID) y la **Clave secreta de la app** (App Secret, botón "Mostrar").
+   - **URL de la política de privacidad:** `https://envia2-express.netlify.app/privacidad.html` (ya viene en la app).
+   - **URL de instrucciones de eliminación de datos:** `https://envia2-express.netlify.app/privacidad.html#eliminar`
+   - Categoría: *Negocios y páginas* (o la que más se parezca) → **Guardar cambios**.
+
+**B. En Firebase**
+4. **Authentication → Sign-in method → Agregar proveedor nuevo → Facebook** → actívalo → pega el **App ID** y el **App Secret**.
+5. Firebase muestra una **"URI de redireccionamiento de OAuth"** (algo como `https://TU-PROYECTO.firebaseapp.com/__/auth/handler`) → **cópiala** → Guardar.
+
+**C. De vuelta en Meta**
+6. **Inicio de sesión con Facebook → Configuración** → en **"URI de redireccionamiento de OAuth válidos"** pega la URI del paso 5 → **Guardar cambios**.
+7. Arriba, cambia la app de **"En desarrollo"** a **"En vivo"** (Publicar). Mientras esté "En desarrollo", solo podrás entrar tú y las personas que agregues como evaluadores.
+   - Los permisos `email` y `public_profile` no necesitan revisión de Meta.
+
+> Si alguien abre el enlace de la app **dentro de Facebook o Messenger**, el ingreso puede fallar: que lo abra en **Chrome** (⋮ → *Abrir en el navegador*).
+> Si una persona entró antes con Google usando el mismo correo, la app le pedirá usar Google.
+
+### 📱 (Opcional, con costo) Ingreso con número de celular
+
+⚠️ **Los SMS de Firebase tienen costo** (plan Blaze). Por eso el botón está **oculto**. Solo si decides pagarlos: agrega en Netlify la variable `VITE_PHONE_LOGIN` = `true` y sigue estos pasos:
 
 1. Firebase → **Authentication** → pestaña **Sign-in method** (Método de acceso) → **Agregar proveedor nuevo** → **Teléfono** → activa el interruptor **Habilitar** → **Guardar**.
 2. **Authentication → Settings** (Configuración) → **Política de regiones de SMS** → elige *Permitir* y agrega **Bolivia** → Guardar.
@@ -216,9 +239,12 @@ Luego *Deploys → Trigger deploy → Deploy site* para que tome las claves.
    3. Tú la ves en **Inicio → 🛵 Repartidores → Revisar** → **Aprobar y generar código** → **Enviar código por WhatsApp** (o se lo das en persona).
    4. El repartidor entra a *Configuración → Trabajar como repartidor → Ingresar código* y su cuenta se activa. Sin el código correcto no puede activarse (las reglas de Firebase lo verifican).
    5. Puedes **bloquear** o desbloquear a un repartidor en esa misma pestaña.
-6. **Promociones (menú 🎁):** puntos por envío, tarjeta de sellos (6 envíos → 50 %, 10 envíos → gratis), cupones y ruleta. Premios y probabilidades en `src/lib/promo.js`.
-7. **QR de cobro:** *Inicio → Panel → 💳 QR de cobro* → sube tu QR; los clientes lo ven al pagar el adelanto de los mandados.
-8. **Seguridad (opcional, cada usuario):** *Configuración → Seguridad* → código de 4 dígitos, patrón o huella/Face ID. Se pide al abrir la app y al volver después de 1 minuto. Si alguien lo olvida, toca "¿Lo olvidaste? Cerrar sesión" y vuelve a entrar con Google o celular.
+6. **Ofertas (Inicio → 🏷️ Ofertas):** crea ofertas como *Primera entrega del día −30 %*, *Primer pedido −50 %*, descuento para todos en ciertas fechas/horas, o **códigos promocionales** (ej. `ORURO20`). Se aplican solas al pedir (gana el mayor descuento) y aparecen en los avisos del inicio.
+7. **Informes (Inicio → 📈 Informes):** General (hoy, ayer, en curso y próximos), Diario (cualquier fecha, por ejemplo ayer), Mensual, Trimestral y Anual. Se imprimen o guardan en PDF, se bajan en Excel o se envían por WhatsApp.
+8. **Repartidores (Inicio → 🛵 Repartidores):** en línea ahora, mejores del mes (🎉 Felicitar), suspender por días, bloquear, reactivar y eliminar.
+9. **Promociones (menú 🎁):** puntos por envío, tarjeta de sellos (6 envíos → 50 %, 10 envíos → gratis), cupones y ruleta. Premios y probabilidades en `src/lib/promo.js`.
+10. **QR de cobro y soporte:** *Inicio → Panel → 💳 QR de cobro y soporte* → sube tu QR y pon el **WhatsApp de asistencia** (aparece en Configuración de todos).
+11. **Seguridad (opcional, cada usuario):** *Configuración → Seguridad* → código de 4 dígitos, patrón o huella/Face ID. Se pide al abrir la app y al volver después de 1 minuto. Si alguien lo olvida, toca "¿Lo olvidaste? Cerrar sesión" y vuelve a entrar con Google o celular.
 7. **Cajas de catálogo** (Yanbal, Ésika, L'Bel, Cyzone…): *Inicio → 💄 Catálogo* (igual que antes).
 8. **Instalar en el celular:** Chrome → menú ⋮ → *Instalar aplicación* (iPhone: Safari → Compartir → *Agregar a inicio*).
 
@@ -253,7 +279,8 @@ Luego *Deploys → Trigger deploy → Deploy site* para que tome las claves.
 | Problema | Solución |
 |---|---|
 | Se cierra la sesión cada hora | Ver la sección "Si la app pide iniciar sesión otra vez cada hora" (clave de API). |
-| "El ingreso por celular no está activado" | Ver la sección "Activar el ingreso con número de celular". |
+| Facebook: "URL bloqueada" o "app no disponible" | Revisa el paso 6 (URI de redireccionamiento) y que la app esté "En vivo". |
+| "El ingreso por celular no está activado" | Está desactivado a propósito (los SMS cuestan). Usa Google o Facebook. |
 | `git` o `npm` "no se reconoce como comando" | Instala Git / Node (Paso 0) y **cierra y abre** el CMD. |
 | `git push` pide usuario/contraseña | Usa la ventana de inicio de sesión de GitHub; si no aparece, instala Git de nuevo con las opciones por defecto (incluye "Git Credential Manager"). |
 | `error: remote origin already exists` | Ya estaba conectado; sigue con `git push -u origin main`. |

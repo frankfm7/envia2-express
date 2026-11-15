@@ -15,7 +15,7 @@ service cloud.firestore {
       let keys = request.resource.data.diff(resource.data).affectedKeys();
       return keys.hasOnly(['status', 'events', 'updatedAt', 'clientBiometric', 'rating', 'review', 'meeting', 'dropoff', 'tripRoute',
                            'scheduledAt', 'recipientPos', 'recipientStatus', 'receiptSent', 'route', 'price', 'redelivery', 'tariff',
-                           'driverId', 'driverPos', 'pickupArrivedAt', 'nearNotified', 'claimKey'])
+                           'driverId', 'driverPos', 'pickupArrivedAt', 'nearNotified', 'claimKey', 'receiptRequestedAt'])
         && (!keys.hasAny(['price']) || request.resource.data.price >= resource.data.price)
         && (!keys.hasAny(['status']) || request.resource.data.status in ['cancelled', 'pending']);
     }
@@ -48,7 +48,10 @@ service cloud.firestore {
     // Solicitudes de repartidor (carnet, fotos, números de confianza): solo el dueño y el administrador
     match /driverApps/{uid} {
       allow read: if signedIn() && (request.auth.uid == uid || isAdmin());
-      allow create, update: if isAdmin() || (signedIn() && request.auth.uid == uid && request.resource.data.status == 'pending');
+      allow create: if isAdmin() || (signedIn() && request.auth.uid == uid && request.resource.data.status == 'pending');
+      // El repartidor puede actualizar sus datos, pero no cambiar el estado de su solicitud
+      allow update: if isAdmin() || (signedIn() && request.auth.uid == uid
+        && (request.resource.data.status == 'pending' || request.resource.data.status == resource.data.status));
       allow delete: if isAdmin();
     }
 

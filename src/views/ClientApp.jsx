@@ -6,6 +6,7 @@ import Chat from '../components/Chat';
 import { whatsappLink, pinMessage } from '../lib/config';
 import NewShipment from './NewShipment';
 import Quote from './Quote';
+import HomeBanner from '../components/HomeBanner';
 import { useStore, updateShipment, ACTIVE } from '../lib/store';
 import { ConfirmMeeting, MeetingStatus } from './Meeting';
 import { useEta, arrivalClock } from '../lib/useEta';
@@ -96,6 +97,7 @@ export default function ClientApp({ me, view, go }) {
           <p className="muted">¿Qué enviamos hoy?</p>
         </div>
       </div>
+      <HomeBanner role="client" go={go} />
       <div className="home-actions">
         <button className="home-action primary" onClick={() => go({ name: 'new' })}>
           <span>📦</span>
@@ -297,9 +299,20 @@ function Track({ s, me, back }) {
               <p>
                 Recibió <b>{s.proof?.receivedBy}</b> · {fmtDate(s.events.at(-1).ts)}
               </p>
-              <button className="btn primary" onClick={() => setShowReceipt(true)}>
-                Ver comprobante con evidencias
-              </button>
+              <div className="row gap wrap">
+                <button className="btn primary" onClick={() => setShowReceipt(true)}>
+                  📄 Ver / descargar comprobante
+                </button>
+                <button
+                  className="btn"
+                  disabled={!!s.receiptRequestedAt}
+                  onClick={() =>
+                    updateShipment(s.id, { receiptRequestedAt: Date.now() }, { notify: [{ to: s.driverId, text: `📩 ${me.name} pide su comprobante de ${s.code}. Envíalo desde tu Historial.` }] })
+                  }
+                >
+                  {s.receiptRequestedAt ? '✔ Comprobante solicitado' : '📩 Pedir mi comprobante por WhatsApp'}
+                </button>
+              </div>
               {!s.clientBiometric ? (
                 <div className="bio-box">
                   <p className="sm">Confirma que recibiste tu caja. Queda como respaldo firmado por tu teléfono.</p>

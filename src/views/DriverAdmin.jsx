@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Modal, ContactBar, WhatsAppIcon } from '../components/Common';
-import { useStore, getOne, approveDriverApp, rejectDriverApp, updateUser } from '../lib/store';
+import { useStore, getOne, approveDriverApp, rejectDriverApp, updateUser, notifyUser, ACTIVE, STATUS, removeDriverAccount } from '../lib/store';
+import { whatsappLink } from '../lib/config';
 import { fmtDate } from '../lib/geo';
 import { codeLink } from './DriverApply';
 import { Avatar } from './Account';
@@ -15,8 +16,11 @@ export default function DriverAdmin() {
   const stats = useMemo(() => {
     const m = {};
     shipments.filter((s) => s.status === 'delivered').forEach((s) => {
-      const x = (m[s.driverId] ||= { n: 0, r: [] });
+      const x = (m[s.driverId] ||= { n: 0, r: [], month: 0 });
       x.n++;
+      const d = new Date(s.updatedAt);
+      const now = new Date();
+      if (d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear()) x.month++;
       if (s.rating) x.r.push(s.rating);
     });
     return m;
@@ -54,35 +58,50 @@ export default function DriverAdmin() {
         </div>
       )}
 
+      <OnlineNow drivers={drivers} shipments={shipments} />
+      <Ranking drivers={drivers} stats={stats} />
+
       <div className="card">
-        <h3>🛵 Repartidores activos ({drivers.filter((d) => d.approved).length})</h3>
+        <h3>🛵 Todos los repartidores ({drivers.length})</h3>
         {!drivers.length && <p className="muted sm">Aún no hay repartidores.</p>}
         {drivers.map((d) => {
           const st = stats[d.id] || { n: 0, r: [] };
+          const susp = d.suspendedUntil && d.suspendedUntil > Date.now();
+          const state = d.approved ? (d.online ? 'En línea' : 'Desconectado') : susp ? `Suspendido hasta ${new Date(d.suspendedUntil).toLocaleDateString('es')}` : d.suspendedUntil ? 'Suspensión vencida' : 'Bloqueado';
           return (
-            <div key={d.id} className="row between wrap gap driver-row">
+            <div key={d.id} className="driver-row driver-admin-row">
               <span className="row gap">
-                <Avatar me={d} size={40} />
+                <Avatar me={d} size={44} />
                 <span>
-                  <span className={`online-dot ${d.online ? 'on' : ''}`} /> <b>{d.name}</b> {!d.approved && <span className="tag">Bloqueado</span>}
+                  <span className={`online-dot ${d.online && d.approved ? 'on' : ''}`} /> <b>{d.name}</b> {d.badge && <span className="tag">🏆 {d.badge}</span>}
                   <div className="muted sm">
                     {d.vehicle} {d.plate} · {st.n} entregas · ★ {st.r.length ? (st.r.reduce((a, b) => a + b, 0) / st.r.length).toFixed(1) : '—'}
                   </div>
+                  {d.driverApp?.updatedAt && <span className="tag">✏️ Actualizó sus datos el {new Date(d.driverApp.updatedAt).toLocaleDateString('es')}</span>}
+                  <div className={`sm ${d.approved ? '' : 'warn'}`}>{state}{!d.approved && d.blockReason ? ` · ${d.blockReason}` : ''}</div>
                 </span>
               </span>
-              <div className="row gap">
+              <div className="row gap wrap">
                 <button className="btn ghost sm" onClick={() => setOpen(d)}>
                   Ficha
                 </button>
                 {d.approved ? (
-                  <button className="btn ghost danger sm" onClick={() => confirm(`¿Bloquear a ${d.name}?`) && updateUser(d.id, { approved: false, online: false })}>
-                    Bloquear
-                  </button>
+                  <>
+                    <button className="btn ghost sm" onClick={() => suspend(d)}>
+                      ⏸️ Suspender
+                    </button>
+                    <button className="btn ghost danger sm" onClick={() => block(d)}>
+                      ⛔ Bloquear
+                    </button>
+                  </>
                 ) : (
-                  <button className="btn sm" onClick={() => updateUser(d.id, { approved: true })}>
-                    Desbloquear
+                  <button className="btn success sm" onClick={() => updateUser(d.id, { approved: true, suspendedUntil: null, blockReason: null })}>
+                    ▶️ Reactivar
                   </button>
                 )}
+                <button className="btn ghost danger sm" onClick={() => removeDriver(d)}>
+                  🗑️ Eliminar
+                </button>
                 <ContactBar name={d.name} phone={d.phone} shipment={{ code: '' }} compact />
               </div>
             </div>
@@ -226,5 +245,96 @@ function ApplicationModal({ u, onClose }) {
         </div>
       )}
     </Modal>
+  );
+}
+
+function suspend(d) {
+  const days = prompt(`¿Cuántos días suspender a ${d.name}?`, '3');
+  if (!days) return;
+  const reason = prompt('Motivo (se le mostrará):', 'Incumplimiento de normas') || '';
+  updateUser(d.id, { approved: false, online: false, suspendedUntil: Date.now() + Number(days) * 864e5, blockReason: reason });
+  notifyUser(d.id, null, `⏸️ Tu cuenta de repartidor fue suspendida por ${days} día(s). ${reason}`);
+}
+function block(d) {
+  const reason = prompt(`Motivo del bloqueo de ${d.name}:`, '');
+  if (reason === null) return;
+  updateUser(d.id, { approved: false, online: false, suspendedUntil: null, blockReason: reason });
+  notifyUser(d.id, null, `⛔ Tu cuenta de repartidor fue bloqueada. ${reason}`);
+}
+function removeDriver(d) {
+  if (!confirm(`¿Eliminar a ${d.name} como repartidor? Su cuenta queda como cliente y se borran sus documentos. Sus entregas pasadas se conservan.`)) return;
+  removeDriverAccount(d.id);
+}
+
+/** Repartidores en línea ahora y qué están haciendo */
+export function OnlineNow({ drivers, shipments }) {
+  const online = drivers.filter((d) => d.online && d.approved);
+  return (
+    <div className="card online-now">
+      <h3>🟢 En línea ahora ({online.length})</h3>
+      {!online.length && <p className="muted sm">Ningún repartidor conectado en este momento.</p>}
+      <div className="online-grid">
+        {online.map((d) => {
+          const job = shipments.find((s) => s.driverId === d.id && ACTIVE.includes(s.status));
+          return (
+            <div key={d.id} className="online-item">
+              <span className="avatar-ring">
+                <Avatar me={d} size={48} />
+              </span>
+              <b className="sm">{d.name.split(' ')[0]}</b>
+              <span className="muted sm">{job ? `${STATUS[job.status].label.split(' ').slice(0, 3).join(' ')} · ${job.code}` : 'Libre'}</span>
+              {d.phone && (
+                <a className="btn call sm" href={`tel:${d.phone}`}>
+                  📞
+                </a>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+/** Mejores repartidores (este mes) + felicitar */
+function Ranking({ drivers, stats }) {
+  const ranked = drivers
+    .map((d) => {
+      const st = stats[d.id] || { n: 0, r: [], month: 0 };
+      const avg = st.r.length ? st.r.reduce((a, b) => a + b, 0) / st.r.length : 0;
+      return { d, month: st.month || 0, avg };
+    })
+    .filter((x) => x.month > 0)
+    .sort((a, b) => b.month - a.month || b.avg - a.avg)
+    .slice(0, 5);
+  const medals = ['🥇', '🥈', '🥉', '4°', '5°'];
+  const congratulate = (d, place) => {
+    const badge = place === 0 ? 'Repartidor del mes' : 'Top repartidor';
+    updateUser(d.id, { badge, badgeAt: Date.now() });
+    notifyUser(d.id, null, `🏆 ¡Felicidades! Eres ${badge} de Envia2 Express. ¡Gracias por tu gran trabajo!`);
+    window.open(whatsappLink(d.phone, `🏆 ¡Felicidades ${d.name.split(' ')[0]}! Eres *${badge}* de Envia2 Express. ¡Gracias por tu esfuerzo y tu buen servicio! 🛵💙`), '_blank');
+  };
+  return (
+    <div className="card ranking">
+      <h3>🏆 Mejores repartidores del mes</h3>
+      {!ranked.length && <p className="muted sm">Aún no hay entregas este mes.</p>}
+      {ranked.map(({ d, month, avg }, i) => (
+        <div key={d.id} className="row between wrap gap rank-row">
+          <span className="row gap">
+            <span className="medal">{medals[i]}</span>
+            <Avatar me={d} size={36} />
+            <span>
+              <b>{d.name}</b>
+              <div className="muted sm">
+                {month} entregas · ★ {avg ? avg.toFixed(1) : '—'}
+              </div>
+            </span>
+          </span>
+          <button className="btn sm congrats" onClick={() => congratulate(d, i)}>
+            🎉 Felicitar
+          </button>
+        </div>
+      ))}
+    </div>
   );
 }

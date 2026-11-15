@@ -8,6 +8,7 @@ import DeliveryProof from './DeliveryProof';
 import { useStore, useSync, useEvidence, getState, updateShipment, updateUser, setDriverPosition, acceptShipment, saveEvidence, publishPublic, publicLink, ACTIVE, CLOUD, recipientHasApp, senderHasApp } from '../lib/store';
 import DriverNewDelivery from './DriverNewDelivery';
 import Quote from './Quote';
+import HomeBanner from '../components/HomeBanner';
 import { TariffCard } from '../components/Tariff';
 import { driverEarning, computeTariff, RULES as TRULES } from '../lib/tariff';
 import { sendReceiptLink } from '../lib/receiptImage';
@@ -171,8 +172,8 @@ function DriverHome({ me, shipments, jobs, go, tracker, section }) {
       <div className="page">
         <div className="card empty-state">
           <div style={{ fontSize: 56 }}>⏳</div>
-          <h3>Tu cuenta de repartidor está pausada</h3>
-          <p className="muted">El administrador la bloqueó temporalmente. Comunícate con él para reactivarla.</p>
+          <h3>{me.suspendedUntil && me.suspendedUntil > Date.now() ? `Cuenta suspendida hasta el ${new Date(me.suspendedUntil).toLocaleDateString('es')}` : 'Tu cuenta de repartidor está bloqueada'}</h3>
+          <p className="muted">{me.blockReason ? `Motivo: ${me.blockReason}. ` : ''}Comunícate con el administrador para reactivarla.</p>
         </div>
       </div>
     );
@@ -221,9 +222,11 @@ function DriverHomeInner({ me, shipments, jobs, go, tracker, section = 'home' })
       {section === 'orders' && <h2>📦 Pedidos</h2>}
       {section === 'home' && (
         <>
+      <HomeBanner role="driver" go={go} />
       <div className="card online-card">
         <div>
           <h2>Hola, {me.name.split(' ')[0]} 🛵</h2>
+          {me.badge && <span className="tag badge-gold">🏆 {me.badge}</span>}
           <div className="muted sm">
             {me.vehicle} · {me.plate || 'sin placas'}
           </div>
@@ -393,7 +396,10 @@ function DriverHomeInner({ me, shipments, jobs, go, tracker, section = 'home' })
           <h3 className="section-title">Entregados ({done.length})</h3>
           <div className="list">
             {[...done].sort((a, b) => b.updatedAt - a.updatedAt).map((s) => (
-              <JobCard key={s.id} s={s} onOpen={() => go({ name: 'job', id: s.id })} />
+              <div key={s.id} className="history-item">
+                <JobCard s={s} onOpen={() => go({ name: 'job', id: s.id })} />
+                <OutboxItem s={s} online={true} resend />
+              </div>
             ))}
           </div>
         </>
@@ -637,13 +643,16 @@ function Job({ s, me, back, tracker }) {
 }
 
 /** Un comprobante pendiente de enviar al cliente */
-function OutboxItem({ s, online, onOpen }) {
+function OutboxItem({ s, online, onOpen, resend }) {
   const ev = useEvidence(s.id);
   return (
     <div className="outbox-item">
-      <button className="btn ghost sm" onClick={onOpen} style={{ textAlign: 'left' }}>
-        <b>{s.recipient.name}</b> · {s.code}
-      </button>
+      {!resend && (
+        <button className="btn ghost sm" onClick={onOpen} style={{ textAlign: 'left' }}>
+          <b>{s.recipient.name}</b> · {s.code}
+        </button>
+      )}
+      {resend && s.receiptRequestedAt && !s.receiptSent?.recipient && <span className="tag">📩 El cliente pidió su comprobante</span>}
       <button
         className="btn wa sm"
         disabled={ev === undefined}
@@ -653,7 +662,7 @@ function OutboxItem({ s, online, onOpen }) {
           updateShipment(s.id, { receiptSent: { ...(s.receiptSent || {}), recipient: Date.now() } });
         }}
       >
-        <WhatsAppIcon /> {online ? 'Enviar' : 'Enviar (al volver señal)'}
+        <WhatsAppIcon /> {resend ? (s.receiptSent?.recipient ? 'Reenviar comprobante' : 'Enviar comprobante') : online ? 'Enviar' : 'Enviar (al volver señal)'}
       </button>
     </div>
   );

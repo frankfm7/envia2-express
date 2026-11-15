@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { PhotoInput, WhatsAppIcon } from '../components/Common';
-import { submitDriverApplication, activateDriver, setViewRole } from '../lib/store';
+import { submitDriverApplication, activateDriver, setViewRole, getOne, updateDriverApplication } from '../lib/store';
+import { useEffect } from 'react';
 import { compressImage } from '../lib/proof';
 import { whatsappLink } from '../lib/config';
 
@@ -19,18 +20,7 @@ async function thumb(dataUrl) {
  */
 export default function DriverApply({ me, go }) {
   const st = me.driverStatus || 'none';
-  if (me.role === 'driver' && me.approved)
-    return (
-      <div className="page narrow">
-        <div className="card empty-state">
-          <div style={{ fontSize: 48 }}>✅</div>
-          <h3>Ya eres repartidor</h3>
-          <button className="btn primary" onClick={() => go({ name: 'home' })}>
-            Ir al inicio
-          </button>
-        </div>
-      </div>
-    );
+  if (me.role === 'driver' && me.approved) return <DriverData me={me} go={go} />;
   if (st === 'pending') return <Waiting me={me} go={go} />;
   if (st === 'code_sent') return <EnterCode me={me} go={go} />;
   return <ApplyForm me={me} go={go} />;
@@ -123,8 +113,8 @@ export async function submitDraftIfAny(me) {
   return true;
 }
 
-export function ApplyForm({ me, go, onDraft, onBack }) {
-  const [f, setF] = useState({
+export function ApplyForm({ me, go, onDraft, onBack, initial, onSave }) {
+  const [f, setF] = useState(() => initial ? { ...initial, photos: undefined, accept: true } : {
     fullName: me?.name || '',
     ci: '',
     ciExt: 'OR',
@@ -142,7 +132,7 @@ export function ApplyForm({ me, go, onDraft, onBack }) {
     ],
     accept: false,
   });
-  const [photos, setPhotos] = useState({ selfie: null, ciFront: null, ciBack: null, vehicle: null, license: null });
+  const [photos, setPhotos] = useState(() => ({ selfie: null, ciFront: null, ciBack: null, vehicle: null, license: null, ...(initial?.photos || {}) }));
   const [err, setErr] = useState('');
   const [busy, setBusy] = useState(false);
   const set = (k, v) => setF((x) => ({ ...x, [k]: v }));
@@ -166,6 +156,11 @@ export function ApplyForm({ me, go, onDraft, onBack }) {
     if (need.length) return setErr('Falta: ' + need.map((n) => n[1]).join(' · '));
     setBusy(true);
     const app = { ...f, plate: f.plate.toUpperCase(), photos, selfieThumb: await thumb(photos.selfie) };
+    if (onSave) {
+      await onSave(app);
+      setBusy(false);
+      return;
+    }
     if (onDraft) {
       // Antes de iniciar sesión: se guarda y se envía al confirmar identidad (Google / celular)
       try {
@@ -188,7 +183,7 @@ export function ApplyForm({ me, go, onDraft, onBack }) {
         <button type="button" className="btn ghost" onClick={() => (onBack ? onBack() : go({ name: 'settings' }))}>
           ← Volver
         </button>
-        <h2>🛵 Quiero ser repartidor</h2>
+        <h2>{onSave ? '🛵 Mis datos de repartidor' : '🛵 Quiero ser repartidor'}</h2>
       </div>
       {me?.driverStatus === 'rejected' && <div className="alert warn">Tu solicitud anterior fue rechazada{me.driverRejectReason ? `: ${me.driverRejectReason}` : ''}. Corrige y envía de nuevo.</div>}
       <p className="muted sm">Llena tus datos. El administrador los revisará y te dará un código de ingreso. Tus documentos solo los ve el administrador.</p>
@@ -293,7 +288,7 @@ export function ApplyForm({ me, go, onDraft, onBack }) {
       </label>
       {err && <div className="alert error">{err}</div>}
       <button className="btn primary block lg" disabled={busy}>
-        {busy ? 'Enviando…' : 'Enviar solicitud al administrador'}
+        {busy ? 'Guardando…' : onSave ? 'Guardar cambios' : 'Enviar solicitud al administrador'}
       </button>
     </form>
   );
@@ -307,3 +302,38 @@ export const codeMessage = (name, code) =>
 
 export const codeLink = (phone, name, code) => whatsappLink(phone, codeMessage(name, code));
 export { WhatsAppIcon };
+
+/** Repartidor aprobado: ver y actualizar sus datos (el administrador recibe el aviso) */
+function DriverData({ me, go }) {
+  const [app, setApp] = useState(undefined);
+  const [saved, setSaved] = useState(false);
+  useEffect(() => {
+    getOne('driverApps', me.id).then((a) => setApp(a || null));
+  }, [me.id]);
+  if (app === undefined) return <div className="page narrow muted">Cargando tus datos…</div>;
+  if (saved)
+    return (
+      <div className="page narrow">
+        <div className="card empty-state">
+          <div style={{ fontSize: 48 }}>✅</div>
+          <h3>Datos actualizados</h3>
+          <p className="muted">El administrador verá los cambios en tu ficha.</p>
+          <button className="btn primary" onClick={() => go({ name: 'home' })}>
+            Ir al inicio
+          </button>
+        </div>
+      </div>
+    );
+  return (
+    <ApplyForm
+      me={me}
+      go={go}
+      initial={app || { fullName: me.name, phone: me.phone, vehicle: me.vehicle || 'Moto', plate: me.plate || '', contacts: [{ name: '', relation: '', phone: '' }, { name: '', relation: '', phone: '' }] }}
+      onBack={() => go({ name: 'settings' })}
+      onSave={async (a) => {
+        await updateDriverApplication(me, a);
+        setSaved(true);
+      }}
+    />
+  );
+}

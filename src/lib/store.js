@@ -90,6 +90,7 @@ export async function localLogin({ name, phone, role, vehicle, plate }) {
 }
 
 export const loginGoogle = async () => (await B()).loginGoogle();
+export const loginFacebook = async () => (await B()).loginFacebook();
 
 /** Modo nube: completar perfil después de entrar con Google */
 /** Modo nube: completar perfil después de entrar (Google o celular). Todos entran como CLIENTE;
@@ -130,7 +131,8 @@ export const useMe = () => {
 
 // ── Cambiar de perfil sin cerrar sesión (admin → repartidor / cliente; repartidor → cliente) ──
 const VIEW_KEY = 'boxruta:view-role:';
-export const allowedRoles = (me) => (me?.role === 'admin' ? ['admin', 'driver', 'client'] : me?.role === 'driver' && me.approved ? ['driver', 'client'] : ['client']);
+// Un repartidor suspendido o bloqueado sigue viendo su perfil de repartidor (con el aviso), y puede pedir como cliente
+export const allowedRoles = (me) => (me?.role === 'admin' ? ['admin', 'driver', 'client'] : me?.role === 'driver' ? ['driver', 'client'] : ['client']);
 export function getViewRole(me) {
   if (!me) return 'client';
   let r = null;
@@ -139,7 +141,7 @@ export function getViewRole(me) {
   } catch {
     /* sin almacenamiento */
   }
-  return allowedRoles(me).includes(r) ? r : me.role === 'driver' && !me.approved ? 'client' : me.role;
+  return allowedRoles(me).includes(r) ? r : me.role;
 }
 export function setViewRole(me, role) {
   try {
@@ -408,4 +410,24 @@ export async function saveSettings(patch) {
 // ── Promociones: guardar un giro de la ruleta ───────────────────────────────
 export async function saveReward(rec) {
   (await B()).put('rewards', rec.id, rec);
+}
+
+/** Admin: quitar a alguien como repartidor (queda como cliente; se borran sus documentos) */
+export async function removeDriverAccount(userId) {
+  const b = await B();
+  b.patch('users', userId, { role: 'client', approved: true, online: false, driverStatus: 'removed', suspendedUntil: null, vehicle: '', plate: '', badge: null });
+  b.remove('driverApps', userId);
+  b.remove('driverCodes', userId);
+}
+
+/** Repartidor aprobado actualiza sus datos (fotos, carnet, vehículo, contactos) */
+export async function updateDriverApplication(me, app) {
+  const b = await B();
+  b.put('driverApps', me.id, { ...app, userId: me.id, email: me.email || '', status: 'approved', updatedAt: Date.now() });
+  b.patch('users', me.id, {
+    vehicle: app.vehicle,
+    plate: app.plate,
+    ...(app.selfieThumb && { photo: app.selfieThumb }),
+    driverApp: { fullName: app.fullName, ci: app.ci, vehicle: app.vehicle, plate: app.plate, sentAt: me.driverApp?.sentAt || Date.now(), updatedAt: Date.now() },
+  });
 }

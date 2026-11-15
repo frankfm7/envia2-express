@@ -1,8 +1,10 @@
 import { useEffect, useState } from 'react';
 import MapView from '../components/MapView';
 import { AddressInput, PhotoInput } from '../components/Common';
-import { createShipment, saveEvidence, useSettings } from '../lib/store';
+import { createShipment, saveEvidence, useSettings, updateUser } from '../lib/store';
 import { usePromo } from '../lib/promo';
+import { bestOffer } from '../lib/offers';
+import { useStore } from '../lib/store';
 import { getRoute, getCurrentPosition, reverseGeocode } from '../lib/geo';
 import { SIZES, money } from '../lib/config';
 import { computeTariff, isNight, RULES, SERVICES, errandAdvance, CONDITIONS } from '../lib/tariff';
@@ -35,6 +37,8 @@ export default function NewShipment({ me, onDone, onCancel, prefill }) {
   });
   const [advanceProof, setAdvanceProof] = useState(null);
   const [couponId, setCouponId] = useState(null);
+  const [promoCode, setPromoCode] = useState(me.promoCode || '');
+  const { shipments } = useStore();
   const settings = useSettings();
   const promo = usePromo(me);
   const [err, setErr] = useState('');
@@ -67,8 +71,14 @@ export default function NewShipment({ me, onDone, onCancel, prefill }) {
   // Precio según el tarifario: distancia de la RUTA (no línea recta)
   const when = form.when === 'later' && form.scheduledAt ? new Date(form.scheduledAt).getTime() : Date.now();
   const tariff = route ? computeTariff({ km: route.distance / 1000, service: form.service, night: isNight(when), weightKg: Number(form.weight) || 0 }) : null;
-  const coupon = promo?.available.find((c) => c.id === couponId) || null;
-  const discount = tariff && coupon ? Math.round(((tariff.total * coupon.pct) / 100) * 10) / 10 : 0;
+  const pickedCoupon = promo?.available.find((c) => c.id === couponId) || null;
+  // Oferta del administrador (ej. primera entrega del día −30 %) o código promocional
+  const offer = bestOffer({ me, shipments, settings, service: form.service, code: promoCode });
+  // Un solo descuento por pedido: el mayor entre el cupón elegido y la oferta
+  const useOffer = offer && (!pickedCoupon || offer.pct > pickedCoupon.pct);
+  const coupon = useOffer ? null : pickedCoupon;
+  const pct = useOffer ? offer.pct : coupon?.pct || 0;
+  const discount = tariff && pct ? Math.round(((tariff.total * pct) / 100) * 10) / 10 : 0;
   const price = tariff ? Math.round((tariff.total - discount) * 10) / 10 : null;
   const errand = form.service === 'errand';
   const purchase = Number(form.purchaseAmount) || 0;
@@ -100,7 +110,8 @@ export default function NewShipment({ me, onDone, onCancel, prefill }) {
       routeKm: tariff.km,
       tariff: { lines: tariff.lines, total: tariff.total, km: tariff.km, approx: !!route.approx },
       originalPrice: tariff.total,
-      coupon: coupon ? { id: coupon.id, pct: coupon.pct, label: coupon.label, discount } : null,
+      coupon: coupon ? { id: coupon.id, pct: coupon.pct, label: coupon.label, discount } : useOffer ? { id: 'offer-' + offer.id, pct: offer.pct, label: offer.title, discount, isOffer: true } : null,
+      offer: useOffer ? { id: offer.id, title: offer.title, pct: offer.pct, code: offer.code || null } : null,
       declaredValue: Number(form.declaredValue) || 0,
       highValue,
       advance: errand ? { amount: advance, paid: true, hasProof: !!advanceProof, at: Date.now() } : null,
@@ -112,6 +123,7 @@ export default function NewShipment({ me, onDone, onCancel, prefill }) {
       tripRoute: route,
     });
     if (advanceProof) saveEvidence(id, { advanceProof });
+    if (useOffer && offer.type === 'code' && me.promoCode) updateUser(me.id, { promoCode: null }); // el código guardado ya se usó
     onDone(id);
   };
 
@@ -138,10 +150,10 @@ export default function NewShipment({ me, onDone, onCancel, prefill }) {
           <div className="card" style={{ marginTop: 10 }}>
             <RouteDistance a={pickup} b={dropoff} route={route} allowManual={false} />
             <PriceBreakdown result={tariff} />
-            {coupon && (
+            {!!pct && (
               <div className="breakdown coupon-line">
                 <div className="row between">
-                  <span>🎫 Cupón {coupon.pct === 100 ? 'envío gratis' : `${coupon.pct} %`}</span>
+                  <span>{useOffer ? `🏷️ ${offer.title || 'Oferta'} (${offer.pct} %)` : `🎫 Cupón ${coupon.pct === 100 ? 'envío gratis' : `${coupon.pct} %`}`}</span>
                   <b>− {money(discount)}</b>
                 </div>
                 <div className="row between total">
@@ -264,6 +276,15 @@ export default function NewShipment({ me, onDone, onCancel, prefill }) {
               <label>Indicaciones para el repartidor</label>
               <textarea rows="2" value={form.notes} onChange={(e) => set('notes', e.target.value)} placeholder="Ej. portón negro, tocar 2 veces, piso 3" />
             </div>
+          </div>
+
+          <div className="card">
+            <h3>🏷️ Código promocional</h3>
+            <div className="row gap">
+              <input value={promoCode} onChange={(e) => setPromoCode(e.target.value.toUpperCase())} placeholder="Ej. ORURO20" aria-label="Código promocional" />
+            </div>
+            {promoCode && (offer?.type === 'code' ? <span className="sm ok-text">✔ Código válido: {offer.pct} % de descuento</span> : <span className="sm muted">Código no válido o vencido.</span>)}
+            {offer && offer.type !== 'code' && <div className="alert success-box sm">🏷️ {offer.title || 'Oferta'}: {offer.pct} % de descuento aplicado</div>}
           </div>
 
           {!!promo?.available.length && (
