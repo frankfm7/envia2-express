@@ -1,3 +1,5 @@
+import WaitBox from '../components/WaitBox';
+import { waitInfo, shipmentTotal } from '../lib/wait';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import MapView from '../components/MapView';
 import Receipt from '../components/Receipt';
@@ -177,6 +179,31 @@ function ShipmentCard({ s, onOpen, highlight }) {
   );
 }
 
+/** Total a pagar con la espera (se actualiza cada segundo mientras el repartidor espera) */
+function WaitTotal({ s }) {
+  const [now, setNow] = useState(Date.now());
+  const running = waitInfo(s, 'pickup', now)?.running || waitInfo(s, 'drop', now)?.running;
+  useEffect(() => {
+    if (!running) return;
+    const t = setInterval(() => setNow(Date.now()), 5000);
+    return () => clearInterval(t);
+  }, [running]);
+  if (s.status === 'delivered' && s.finalPrice != null)
+    return (
+      <div className="wait-total">
+        <span>Total cobrado</span>
+        <b>{money(s.finalPrice)}</b>
+      </div>
+    );
+  const waived = s.waitWaived?.pickup || s.waitWaived?.drop;
+  return (
+    <div className="wait-total">
+      <span>{waived ? '🤝 Espera condonada · pagas solo' : 'Total a pagar (envío + espera)'}</span>
+      <b>{money(shipmentTotal(s, now))}</b>
+    </div>
+  );
+}
+
 function Track({ s, me, back }) {
   const eta = useEta(s);
   const [tab, setTab] = useState('info');
@@ -275,6 +302,14 @@ function Track({ s, me, back }) {
         </div>
 
         <div className="split-form">
+          {/* Tiempo de espera del repartidor (recojo y entrega): cronómetro, tiempo gratis, recargo o espera condonada */}
+          {(s.pickupArrivedAt || s.dropWaitAt) && s.status !== 'cancelled' && (
+            <>
+              {s.pickupArrivedAt && <WaitBox s={s} which="pickup" />}
+              {s.dropWaitAt && <WaitBox s={s} which="drop" />}
+              <WaitTotal s={s} />
+            </>
+          )}
           {s.status === 'stored' && <StoredCard s={s} />}
           {s.status === 'awaiting_confirmation' && !isRecipientUser && (
             <div className="alert warn">Esperando que {s.recipient.name} confirme lugar y hora de entrega.</div>

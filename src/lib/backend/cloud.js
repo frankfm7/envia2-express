@@ -93,6 +93,8 @@ export function createCloudBackend(ctx) {
     authDomain: 'envia2-express.netlify.app',
     projectId: env.VITE_FIREBASE_PROJECT_ID,
     appId: env.VITE_FIREBASE_APP_ID,
+    // Necesario para notificaciones push: es el número del proyecto (viene dentro del appId "1:NÚMERO:web:…")
+    messagingSenderId: env.VITE_FIREBASE_MESSAGING_SENDER_ID || String(env.VITE_FIREBASE_APP_ID || '').split(':')[1] || undefined,
   });
   // Sesión guardada en el celular (IndexedDB / localStorage): no se cierra al salir de la app.
   // Firebase renueva el acceso solo cada hora; si el renuevo falla, revisar la clave de API (ver guía).
@@ -337,6 +339,15 @@ export function createCloudBackend(ctx) {
       const data = enc(fields);
       for (const [k, v] of Object.entries(pushes)) data[k] = arrayUnion(enc(v));
       await strict(updateDoc(ref(col, id), data));
+    },
+    /** Escrituras que NO esperan (se guardan en el celular y suben solas), pero avisan si la nube las RECHAZA */
+    patchTracked(col, id, fields, pushes = {}) {
+      const data = enc(fields);
+      for (const [k, v] of Object.entries(pushes)) data[k] = arrayUnion(enc(v));
+      return updateDoc(ref(col, id), data);
+    },
+    mergeTracked(col, id, data) {
+      return setDoc(ref(col, id), enc(data), { merge: true });
     },
     async mergeStrict(col, id, data) {
       await strict(setDoc(ref(col, id), enc(data), { merge: true }));

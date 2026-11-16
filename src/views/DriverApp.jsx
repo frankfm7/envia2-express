@@ -5,12 +5,13 @@ import { ContactBar, StatusBadge, Modal, PhotoInput, Timeline } from '../compone
 import WhatsAppPanel from '../components/WhatsAppPanel';
 import Chat from '../components/Chat';
 import DeliveryProof from './DeliveryProof';
-import { useStore, useSync, useEvidence, getState, updateShipment, updateUser, setDriverPosition, acceptShipment, saveEvidence, publishPublic, publicLink, ACTIVE, CLOUD, recipientHasApp, senderHasApp } from '../lib/store';
+import { useStore, useSync, useEvidence, getState, updateShipment, updateUser, setDriverPosition, acceptShipment, saveEvidence, publishPublic, publicLink, ACTIVE, CLOUD, recipientHasApp, senderHasApp, uploadFailure, retryDelivery } from '../lib/store';
 import DriverNewDelivery from './DriverNewDelivery';
 import Quote from './Quote';
 import HomeBanner from '../components/HomeBanner';
 import { TariffCard } from '../components/Tariff';
-import { driverEarning, computeTariff, RULES as TRULES, waitCharge } from '../lib/tariff';
+import { driverEarning, computeTariff, RULES as TRULES } from '../lib/tariff';
+import WaitBox from '../components/WaitBox';
 import { sendReceiptLink } from '../lib/receiptImage';
 import { claimLink } from './DeliveryProof';
 import { useEta, arrivalClock } from '../lib/useEta';
@@ -504,7 +505,7 @@ function Job({ s, me, back, tracker }) {
               ⏳ Llegué · esperando el paquete
             </button>
           )}
-          {s.status === 'accepted' && s.pickupArrivedAt && <WaitTimer since={s.pickupArrivedAt} label="Esperando el paquete" />}
+          {s.pickupArrivedAt && ['accepted', 'picked_up', 'in_transit', 'arrived'].includes(s.status) && <WaitBox s={s} which="pickup" driver />}
           {s.status === 'accepted' && (
             <button className={`btn ${s.pickupArrivedAt ? 'primary' : 'ghost'} block lg`} onClick={() => setModal('pickup')}>
               📦 Recogí la caja
@@ -525,7 +526,7 @@ function Job({ s, me, back, tracker }) {
               ⏳ Esperando para entregar
             </button>
           )}
-          {s.status === 'arrived' && s.dropWaitAt && <WaitTimer since={s.dropWaitAt} label="Esperando para entregar" />}
+          {s.status === 'arrived' && s.dropWaitAt && <WaitBox s={s} which="drop" driver />}
           {s.status === 'arrived' && (
             <button className="btn success block lg" onClick={() => setModal('deliver')}>
               ✍️ Confirmar entrega (PIN · foto · firma)
@@ -543,6 +544,7 @@ function Job({ s, me, back, tracker }) {
               )}
             </div>
           )}
+          <UploadFailBanner id={s.id} />
           {s.status === 'delivered' && (
             <button className="btn primary block lg" onClick={() => setModal('receipt')}>
               🧾 Comprobante · enviar por WhatsApp
@@ -831,24 +833,31 @@ function ProblemModal({ s, onClose, back }) {
   );
 }
 
-/** Cronómetro de espera: corre desde que el repartidor tocó "Esperando…" (los primeros minutos son gratis) */
-function WaitTimer({ since, label }) {
-  const [now, setNow] = useState(Date.now());
+/** Si la nube rechazó la entrega: se muestra el motivo y se puede reintentar (la entrega está guardada en el celular) */
+function UploadFailBanner({ id }) {
+  const [f, setF] = useState(() => uploadFailure(id));
+  const [busy, setBusy] = useState(false);
   useEffect(() => {
-    const t = setInterval(() => setNow(Date.now()), 1000);
-    return () => clearInterval(t);
-  }, []);
-  const sec = Math.max(0, Math.floor((now - since) / 1000));
-  const min = sec / 60;
-  const free = TRULES.freeWaitMin;
-  const charge = waitCharge(min);
+    const h = (e) => e.detail === id && setF(uploadFailure(id));
+    window.addEventListener('envia2:upload-fail', h);
+    return () => window.removeEventListener('envia2:upload-fail', h);
+  }, [id]);
+  if (!f) return null;
   return (
-    <div className={`wait-timer ${min > free ? 'over' : ''}`}>
-      <span>⏳ {label}</span>
-      <b>
-        {String(Math.floor(sec / 60)).padStart(2, '0')}:{String(sec % 60).padStart(2, '0')}
-      </b>
-      <small>{min <= free ? `${Math.ceil(free - min)} min gratis restantes` : `Espera con cobro: ${money(charge.amount)}`}</small>
+    <div className="alert error">
+      ⚠️ <b>La entrega está guardada en este celular, pero la nube no la aceptó</b> (motivo: {f.error}). Revisa tu internet y toca Reintentar. Si se repite, manda captura al administrador.
+      <button
+        className="btn primary block"
+        style={{ marginTop: 8 }}
+        disabled={busy}
+        onClick={async () => {
+          setBusy(true);
+          await retryDelivery(id);
+          setBusy(false);
+        }}
+      >
+        {busy ? 'Reintentando…' : '🔄 Reintentar subir la entrega'}
+      </button>
     </div>
   );
 }

@@ -6,6 +6,24 @@
 
 ---
 
+## Entrega 4.12 (ZIP) — 16 nov 2026 · app versión 1.0.0 · sin cambios de reglas
+
+**La entrega SIEMPRE termina (con o sin internet)**
+- Problema: la 4.11 esperaba la confirmación de la nube; con señal muy débil (0,09 kB/s) la foto no alcanzaba a subir y salía "la nube no confirmó a tiempo".
+- Ahora la entrega se guarda en el celular y **termina al instante** (se abre el comprobante), con o sin señal. Sube sola cuando hay conexión: primero el estado "Entregado" (liviano) y después la foto y la firma.
+- Fotos más livianas para subir rápido: la foto de entrega se reduce y la **firma pasa de PNG a JPG**.
+- Si la nube **rechaza** la entrega, la pantalla del envío muestra el motivo y un botón **"🔄 Reintentar subir la entrega"** (lo guardado no se pierde).
+
+**Notificaciones push**
+- Corregido el error `messagingSenderId` (*missing-app-config-values*): la app lo toma sola del `VITE_FIREBASE_APP_ID` (no hay que agregar nada).
+
+**Tiempo de espera visible para el cliente + cobrar o perdonar**
+- El cliente ve en su seguimiento **"El repartidor está esperando"** con el **cronómetro**, el tiempo gratis que queda y, si se pasa, el **recargo**; tanto en el **recojo** como en la **entrega**. Debajo, el **total a pagar** (envío + espera).
+- El repartidor tiene **"💰 Cobrar espera"** y **"🤝 Perdonar espera"** (también "No cobrar esta espera" antes de que se pase). Al perdonar, el cliente ve **"Espera condonada · pagas solo Bs X"** y recibe el aviso.
+- El cobro final respeta lo elegido (muestra "condonada") y el comprobante lo registra.
+
+---
+
 ## Entrega 4.11 (ZIP) — 16 nov 2026 · app versión 1.0.0 · sin cambios de reglas
 
 **La entrega no terminaba (no se podía sacar el comprobante)**

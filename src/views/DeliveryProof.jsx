@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import SignaturePad from '../components/SignaturePad';
 import { PhotoInput } from '../components/Common';
-import { updateShipment, saveEvidence, saveEvidenceStrict, updateShipmentStrict, useEvidence, publishPublic, getState } from '../lib/store';
+import { completeDelivery, useEvidence, publishPublic, getState } from '../lib/store';
 import { distance, fmtKm, getCurrentPosition } from '../lib/geo';
 import { computeSeal, biometricAvailable, biometricConfirm, compressImage } from '../lib/proof';
 import { DELIVERY_RADIUS_M, money, whatsappLink, pinMessage } from '../lib/config';
@@ -37,8 +37,9 @@ export default function DeliveryProof({ s, me, onDone, onCancel }) {
   const quotedSurcharge = (s.tariff?.lines || []).some((l) => l.label.startsWith('Recargo'));
   const [weather, setWeather] = useState(false);
   const [purchaseReal, setPurchaseReal] = useState(s.purchaseAmount || '');
-  const wp = waitCharge(waitPickup);
-  const wd = waitCharge(waitDrop);
+  // Espera condonada por el repartidor → no se cobra
+  const wp = s.waitWaived?.pickup ? { amount: 0, waived: true } : waitCharge(waitPickup);
+  const wd = s.waitWaived?.drop ? { amount: 0, waived: true } : waitCharge(waitDrop);
   const extraSurcharge = weather && !quotedSurcharge ? RULES.surcharge : 0;
   const shippingTotal = (Number(s.price) || 0) + wp.amount + wd.amount + extraSurcharge;
   const purchase = s.service === 'errand' ? Number(purchaseReal) || 0 : 0;
@@ -84,6 +85,7 @@ export default function DeliveryProof({ s, me, onDone, onCancel }) {
           waitPickupMin: waitPickup,
           waitDropMin: waitDrop,
           waitTotal: wp.amount + wd.amount,
+          waitWaived: { pickup: !!wp.waived, drop: !!wd.waived },
           surcharge: extraSurcharge,
           shipping: shippingTotal,
           purchase,
@@ -98,25 +100,19 @@ export default function DeliveryProof({ s, me, onDone, onCancel }) {
         ts: Date.now(),
         device: navigator.userAgent.slice(0, 120),
       };
-      // Límite de la nube: 1 MB por documento (foto de recojo + foto de entrega + firma). Si se pasa, se achica la foto.
-      let photo2 = photo;
+      // Fotos livianas para que suban rápido aunque la señal sea mala (y no pasen el límite de 1 MB de la nube)
+      const shrinkUrl = async (url, max, q) => compressImage(new File([await (await fetch(url)).blob()], 'p.jpg', { type: 'image/jpeg' }), max, q, false);
+      let photo2 = await shrinkUrl(photo, 720, 0.55);
+      const sig2 = await shrinkUrl(signature, 600, 0.7); // la firma pasa de PNG a JPG (mucho más liviana)
       const size = (o) => JSON.stringify(o).length;
-      for (const [max, q] of [[720, 0.55], [520, 0.5], [400, 0.45]]) {
-        if (size({ ...(prevEv || {}), photo: photo2, signature }) <= 850 * 1024) break;
-        const blob = await (await fetch(photo2)).blob();
-        photo2 = await compressImage(new File([blob], 'p.jpg', { type: 'image/jpeg' }), max, q, false);
+      for (const [max, q] of [[520, 0.5], [400, 0.45]]) {
+        if (size({ ...(prevEv || {}), photo: photo2, signature: sig2 }) <= 850 * 1024) break;
+        photo2 = await shrinkUrl(photo2, max, q);
       }
-      const evidence = { ...(prevEv || {}), photo: photo2, signature };
+      const evidence = { ...(prevEv || {}), photo: photo2, signature: sig2 };
       proof.hash = await computeSeal(s, proof, evidence);
-      // Primero la foto y la firma, luego el estado "Entregado": ambos esperan la confirmación de la nube
-      if (navigator.onLine) {
-        await saveEvidenceStrict(s.id, { photo: photo2, signature });
-        await updateShipmentStrict(s.id, { proof, finalPrice: shippingTotal }, { status: 'delivered', note: `Recibió ${proof.receivedBy}`, pos: p });
-      } else {
-        // Sin señal: queda guardado en el celular y se sube solo al volver la conexión
-        saveEvidence(s.id, { photo: photo2, signature });
-        updateShipment(s.id, { proof, finalPrice: shippingTotal }, { status: 'delivered', note: `Recibió ${proof.receivedBy}`, pos: p });
-      }
+      // La entrega TERMINA SIEMPRE (con o sin señal): se guarda en el celular y sube sola. Si la nube la rechaza, se avisa.
+      await completeDelivery(s.id, { patch: { proof, finalPrice: shippingTotal }, note: `Recibió ${proof.receivedBy}`, pos: p, evidence: { photo: photo2, signature: sig2 } });
       // Copia pública para el cliente (se sube sola cuando haya señal)
       const fresh = getState().shipments.find((x) => x.id === s.id) || s;
       publishPublic({ ...fresh, status: 'delivered', proof, events: [...(fresh.events || []), { status: 'delivered', ts: Date.now() }] }, evidence);
@@ -235,14 +231,14 @@ export default function DeliveryProof({ s, me, onDone, onCancel }) {
                 Espera en recojo{' '}
                 <input className="mini" type="number" min="0" value={waitPickup} onChange={(e) => setWaitPickup(Number(e.target.value) || 0)} aria-label="Minutos de espera en recojo" /> min
               </span>
-              <b>{wp.amount ? money(wp.amount) : 'gratis'}</b>
+              <b>{wp.waived ? 'condonada' : wp.amount ? money(wp.amount) : 'gratis'}</b>
             </div>
             <div className="row between gap">
               <span>
                 Espera en entrega{' '}
                 <input className="mini" type="number" min="0" value={waitDrop} onChange={(e) => setWaitDrop(Number(e.target.value) || 0)} aria-label="Minutos de espera en entrega" /> min
               </span>
-              <b>{wd.amount ? money(wd.amount) : 'gratis'}</b>
+              <b>{wd.waived ? 'condonada' : wd.amount ? money(wd.amount) : 'gratis'}</b>
             </div>
             {!quotedSurcharge && (
               <label className="check">
@@ -279,7 +275,7 @@ export default function DeliveryProof({ s, me, onDone, onCancel }) {
               <span>Total a cobrar</span>
               <b>{money(toCollect)}</b>
             </div>
-            <span className="muted sm">Espera: {RULES.freeWaitMin} min gratis por parada; luego {money(RULES.waitBlockPrice)} cada 10 min. Los minutos se midieron con el GPS; puedes corregirlos.</span>
+            <span className="muted sm">Espera: {RULES.freeWaitMin} min gratis por parada; luego {money(RULES.waitBlockPrice)} cada 10 min. Los minutos los midió el cronómetro de espera; puedes corregirlos.</span>
           </div>
           {toCollect > 0 && (
             <label className="check">

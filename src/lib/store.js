@@ -327,6 +327,51 @@ export async function updateShipmentStrict(id, patch, { status, note, pos } = {}
     interested(sh || {}).filter((u) => u !== session?.userId).forEach((u) => notifyUser(u, id, text));
   }
 }
+// ── Entrega que SIEMPRE termina (con o sin internet) ──────────────────────
+// Se guarda en el celular al instante y sube sola cuando hay señal. Si la nube la RECHAZA,
+// queda guardada aquí para mostrar el motivo y "Reintentar".
+const FAIL = (id) => 'envia2:upload-fail:' + id;
+export const uploadFailure = (id) => {
+  try {
+    return JSON.parse(localStorage.getItem(FAIL(id)));
+  } catch {
+    return null;
+  }
+};
+const setFailure = (id, v) => {
+  try {
+    if (v) localStorage.setItem(FAIL(id), JSON.stringify(v));
+    else localStorage.removeItem(FAIL(id));
+  } catch {
+    /* sin espacio: igual se muestra el error en pantalla */
+  }
+  window.dispatchEvent(new CustomEvent('envia2:upload-fail', { detail: id }));
+};
+export async function completeDelivery(id, { patch, note, pos, evidence }) {
+  const b = await B();
+  const sh = data.shipments.find((x) => x.id === id);
+  const ev = { status: 'delivered', ts: Date.now(), note: note || null, pos: pos ? { lat: pos.lat, lng: pos.lng } : null };
+  const fields = { ...patch, status: 'delivered', updatedAt: Date.now() };
+  const save = { patch: fields, ev, evidence, at: Date.now() };
+  setFailure(id, null);
+  if (b.patchTracked) {
+    // 1) el estado (liviano) primero; 2) la foto y firma (pesadas) después
+    b.patchTracked('shipments', id, fields, { events: ev }).catch((e) => setFailure(id, { ...save, error: e.code || e.message || 'error' }));
+    b.mergeTracked('evidence', id, evidence).catch((e) => setFailure(id, { ...save, error: 'fotos: ' + (e.code || e.message || 'error') }));
+  } else {
+    b.patch('shipments', id, fields, { events: ev });
+    b.saveEvidence(id, evidence);
+  }
+  const text = `${sh?.code}: ${STATUS.delivered.label}${note ? ' · ' + note : ''}`;
+  interested(sh || {}).filter((u) => u !== session?.userId).forEach((u) => notifyUser(u, id, text));
+}
+/** Reintentar subir una entrega que la nube rechazó */
+export async function retryDelivery(id) {
+  const f = uploadFailure(id);
+  if (!f) return;
+  await completeDelivery(id, { patch: f.patch, note: f.ev?.note, pos: f.ev?.pos, evidence: f.evidence });
+}
+
 /** Fotos/firma de la entrega: espera confirmación */
 export async function saveEvidenceStrict(id, patch) {
   const b = await B();
