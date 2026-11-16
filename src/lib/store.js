@@ -257,6 +257,7 @@ export async function createShipment(creator, d, { status = 'pending' } = {}) {
     clientId: creator.id,
     clientName: creator.name,
     clientPhone: creator.phone,
+    ...(creator.ci && { clientCi: `${creator.ci} ${creator.ciExt || ''}`.trim() }),
     recipientUid: null,
     driverId: null,
     status,
@@ -437,6 +438,16 @@ export async function saveSettings(patch) {
 }
 
 // ── Promociones: guardar un giro de la ruleta ───────────────────────────────
+/** ¿Las reglas de la nube reconocen al administrador? (en modo demo siempre sí) */
+export const adminRulesOk = async () => {
+  const b = await B();
+  return b.adminRulesOk ? b.adminRulesOk() : true;
+};
+/** Guardado que espera la confirmación de la nube (para regalos: si falla, se avisa) */
+export async function saveRewardStrict(rec) {
+  const b = await B();
+  return b.putStrict ? b.putStrict('rewards', rec.id, rec) : b.put('rewards', rec.id, rec);
+}
 export async function saveReward(rec) {
   (await B()).put('rewards', rec.id, rec);
 }
@@ -450,24 +461,29 @@ export async function removeDriverAccount(userId) {
 }
 
 /** Repartidor aprobado actualiza sus datos (fotos, carnet, vehículo, contactos) */
-export async function updateDriverApplication(me, app) {
+/** Repartidor aprobado: SOLO datos básicos (celular, domicilio, marca/color, números de confianza).
+ *  Nombre, carnet, placa, vehículo, licencia y fotos quedan bloqueados (las reglas también lo impiden). */
+export const DRIVER_BASIC_KEYS = ['phone', 'homeAddress', 'brand', 'color', 'contacts'];
+export async function updateDriverBasics(me, f) {
   const b = await B();
-  b.put('driverApps', me.id, { ...app, userId: me.id, email: me.email || '', status: 'approved', updatedAt: Date.now() });
-  notifyAdmins(`✏️ ${me.name} actualizó sus datos de repartidor.`, 'driver-app');
-  b.patch('users', me.id, {
-    vehicle: app.vehicle,
-    plate: app.plate,
-    ...(app.selfieThumb && { photo: app.selfieThumb }),
-    driverApp: { fullName: app.fullName, ci: app.ci, vehicle: app.vehicle, plate: app.plate, sentAt: me.driverApp?.sentAt || Date.now(), updatedAt: Date.now() },
-  });
+  const fields = Object.fromEntries(DRIVER_BASIC_KEYS.map((k) => [k, f[k]]));
+  fields.phone = String(fields.phone || '').replace(/[^\d+]/g, '');
+  const patch = b.patchStrict ? b.patchStrict.bind(b) : b.patch.bind(b);
+  await patch('driverApps', me.id, { ...fields, updatedAt: Date.now() });
+  b.patch('users', me.id, { phone: fields.phone });
+  notifyAdmins(`✏️ ${me.name} actualizó sus datos básicos de repartidor.`, 'driver-app');
 }
 
 // ── Administradores (para avisos y chat de soporte) ─────────────────────────
 export const adminUids = () => (data.settings || []).find((x) => x.id === 'app')?.adminUids || [];
 /** Registra al administrador que entra (para que le lleguen los avisos y los chats de soporte) */
 export async function registerAdmin(me) {
-  if (me?.role !== 'admin' || adminUids().includes(me.id)) return;
-  saveSettings({ adminUids: [...adminUids(), me.id] });
+  if (me?.role !== 'admin') return;
+  // Se espera a que carguen los ajustes (si no, se podían borrar los ajustes guardados)
+  setTimeout(() => {
+    if (!(data.settings || []).some((x) => x.id === 'app') || adminUids().includes(me.id)) return;
+    saveSettings({ adminUids: [...adminUids(), me.id] });
+  }, 6000);
 }
 /** Aviso dentro de la app a todos los administradores */
 export function notifyAdmins(text, ref = null) {
@@ -475,6 +491,24 @@ export function notifyAdmins(text, ref = null) {
 }
 
 // ── Chats directos (administrador ↔ repartidor / cliente, y soporte) ────────
+/** Buzón de la administración: todo mensaje de soporte lo lleva, y CUALQUIER administrador lo ve
+ *  (ya no depende de que el administrador esté "registrado"). */
+export const ADMIN_INBOX = 'admins';
+const SEEN = (k) => 'envia2:sup-seen:' + k;
+export const supportSeen = (k) => {
+  try {
+    return Number(localStorage.getItem(SEEN(k))) || 0;
+  } catch {
+    return 0;
+  }
+};
+export const markSupportSeen = (k) => {
+  try {
+    localStorage.setItem(SEEN(k), String(Date.now()));
+  } catch {
+    /* sin almacenamiento */
+  }
+};
 export const dmThread = (a, b) => 'dm:' + [a, b].sort().join('_');
 export const supportThread = (uid) => 'sup:' + uid;
 export async function sendDirect(threadId, from, participants, text, toName) {
@@ -482,7 +516,8 @@ export async function sendDirect(threadId, from, participants, text, toName) {
   const ps = [...new Set([...participants, from.id].filter(Boolean))];
   const id = uid('m_');
   b.put('messages', id, { threadId, shipmentId: null, fromId: from.id, fromName: from.name, role: from.role, text, ts: Date.now(), participants: ps, toName: toName || null });
-  ps.filter((p) => p !== from.id).forEach((p) => notifyUser(p, threadId, `💬 ${from.name}: ${text}`));
+  // Avisos: a las personas (el buzón de administración genera su propio aviso en la app del administrador)
+  ps.filter((p) => p !== from.id && p !== ADMIN_INBOX && !(threadId.startsWith('sup:') && from.role !== 'admin' && adminUids().includes(p))).forEach((p) => notifyUser(p, threadId, `💬 ${from.name}: ${text}`));
 }
 
 /** ¿Le faltan datos para poder pedir? (invitado o sin celular) */

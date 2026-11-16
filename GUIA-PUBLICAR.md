@@ -159,7 +159,7 @@ La app **ya trae lista la conexión a Firebase** (Google): plan gratis sin tarje
    - Para **entrar con número de celular** sigue la sección **"📱 Activar el ingreso con número de celular"** (más abajo).
 4. *Compilación → Firestore Database → Crear base de datos* → ubicación `southamerica-east1` (São Paulo, la más cercana) → **modo producción**.
 5. Firestore → pestaña **Reglas** → pega el contenido de `firestore.rules`, cambia `tu_correo@gmail.com` por **tu Gmail** → **Publicar**.
-   > ⚠️ Cada vez que recibas un ZIP que diga "reglas actualizadas" en el CHANGELOG, vuelve a pegar y publicar `firestore.rules` (la 4 y la 4.1 las cambiaron).
+   > ⚠️ Cada vez que recibas un ZIP que diga "reglas actualizadas" en el CHANGELOG, vuelve a pegar y publicar `firestore.rules` (la 4, la 4.1 y la 4.9 las cambiaron).
 6. *Authentication → Settings → Dominios autorizados* → **Agregar dominio** → `envia2-express.netlify.app` (tu dominio de Netlify, sin `https://`).
 
 ### 🔁 Inicio de sesión por REDIRECCIÓN con proxy same-origin (desde la 4.8 — Opción 3 de Firebase)

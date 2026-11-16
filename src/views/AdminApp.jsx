@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import MapView from '../components/MapView';
 import Receipt from '../components/Receipt';
 import { StatusBadge, Modal, Timeline, ContactBar } from '../components/Common';
-import { useStore, STATUS, ACTIVE, exportBackup, importBackup, resetAll, updateUser, CLOUD, useSettings, saveSettings } from '../lib/store';
+import { useStore, STATUS, ACTIVE, exportBackup, importBackup, resetAll, updateUser, CLOUD, useSettings, saveSettings, adminRulesOk } from '../lib/store';
 import { compressImage } from '../lib/proof';
 import CatalogBoxes from './CatalogBoxes';
 import Quote from './Quote';
@@ -20,10 +20,19 @@ export default function AdminApp({ me, view }) {
   }, [view?.id]);
   const { users } = useStore();
   const pendingApps = users.filter((u) => u.driverStatus === 'pending').length;
+  const [rulesOk, setRulesOk] = useState(true);
+  useEffect(() => {
+    adminRulesOk().then(setRulesOk);
+  }, []);
   if (view?.name === 'orders') return <div className="page"><Dashboard mode="orders" /></div>;
   if (view?.name === 'history') return <div className="page"><Dashboard mode="history" /></div>;
   return (
     <div className="page">
+      {!rulesOk && (
+        <div className="alert error">
+          ⚠️ <b>Firebase no te reconoce como administrador.</b> Por eso no se guardan regalos, ajustes ni códigos de repartidor. En Firebase → Firestore → <b>Reglas</b>, cambia <code>tu_correo@gmail.com</code> por tu correo de administrador y toca <b>Publicar</b> (ver la guía).
+        </div>
+      )}
       <div className="tabs big scroll-x">
         <button className={tab === 'panel' ? 'on' : ''} onClick={() => setTab('panel')}>
           📊 Panel

@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { PhotoInput, WhatsAppIcon } from '../components/Common';
-import { submitDriverApplication, activateDriver, setViewRole, getOne, updateDriverApplication } from '../lib/store';
+import { submitDriverApplication, activateDriver, setViewRole, getOne, updateDriverBasics, sendDirect, supportThread, adminUids, ADMIN_INBOX } from '../lib/store';
 import { useEffect } from 'react';
 import { compressImage } from '../lib/proof';
 import { whatsappLink } from '../lib/config';
@@ -341,36 +341,129 @@ export const codeLink = (phone, name, code) => whatsappLink(phone, codeMessage(n
 export { WhatsAppIcon };
 
 /** Repartidor aprobado: ver y actualizar sus datos (el administrador recibe el aviso) */
+/** Repartidor aprobado: datos CLAVE bloqueados (los cambia solo el administrador) y datos básicos editables */
+const LOCKED = [
+  ['fullName', 'Nombre completo'],
+  ['ci', 'Carnet (CI)'],
+  ['birth', 'Fecha de nacimiento'],
+  ['vehicle', 'Vehículo'],
+  ['plate', 'Placa'],
+  ['license', 'N° de licencia'],
+];
 function DriverData({ me, go }) {
   const [app, setApp] = useState(undefined);
-  const [saved, setSaved] = useState(false);
+  const [f, setF] = useState(null);
+  const [msg, setMsg] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [req, setReq] = useState('');
   useEffect(() => {
-    getOne('driverApps', me.id).then((a) => setApp(a || null));
-  }, [me.id]);
-  if (app === undefined) return <div className="page narrow muted">Cargando tus datos…</div>;
-  if (saved)
-    return (
-      <div className="page narrow">
-        <div className="card empty-state">
-          <div style={{ fontSize: 48 }}>✅</div>
-          <h3>Datos actualizados</h3>
-          <p className="muted">El administrador verá los cambios en tu ficha.</p>
-          <button className="btn primary" onClick={() => go({ name: 'home' })}>
-            Ir al inicio
-          </button>
-        </div>
-      </div>
-    );
+    getOne('driverApps', me.id).then((a) => {
+      const base = a || { fullName: me.name, phone: me.phone, vehicle: me.vehicle || 'Moto', plate: me.plate || '' };
+      setApp(base);
+      setF({
+        phone: base.phone || me.phone || '',
+        homeAddress: base.homeAddress || '',
+        brand: base.brand || '',
+        color: base.color || '',
+        contacts: base.contacts?.length ? base.contacts : [{ name: '', relation: '', phone: '' }, { name: '', relation: '', phone: '' }],
+      });
+    });
+  }, [me.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  if (app === undefined || !f) return <div className="page narrow muted">Cargando tus datos…</div>;
+  const set = (k, v) => setF((x) => ({ ...x, [k]: v }));
+  const setC = (i, k, v) => setF((x) => ({ ...x, contacts: x.contacts.map((c, j) => (j === i ? { ...c, [k]: v } : c)) }));
+  const save = async () => {
+    if (f.phone.replace(/\D/g, '').length < 8) return setMsg('✖ Escribe tu celular (8 dígitos).');
+    if (!f.contacts.every((c) => c.name.trim() && c.phone.replace(/\D/g, '').length >= 8)) return setMsg('✖ Completa los 2 números de confianza (nombre y celular).');
+    setBusy(true);
+    setMsg('');
+    try {
+      await updateDriverBasics(me, f);
+      setMsg('✅ Datos guardados. El administrador verá los cambios en tu ficha.');
+    } catch (e) {
+      setMsg('✖ ' + (e.message || 'No se pudo guardar. Intenta de nuevo.'));
+    }
+    setBusy(false);
+  };
+  const askChange = async () => {
+    if (req.trim().length < 5) return setMsg('✖ Escribe qué dato quieres cambiar y por qué.');
+    await sendDirect(supportThread(me.id), me, [me.id, ADMIN_INBOX, ...adminUids()], `🔒 Solicitud de cambio de datos de repartidor: ${req.trim()}`, 'Soporte');
+    setReq('');
+    setMsg('✅ Solicitud enviada al administrador. Te responderá en Mensajes → Soporte.');
+  };
+  const show = (k) => (k === 'ci' ? `${app.ci || '—'} ${app.ciExt || ''}` : app[k] || '—');
   return (
-    <ApplyForm
-      me={me}
-      go={go}
-      initial={app || { fullName: me.name, phone: me.phone, vehicle: me.vehicle || 'Moto', plate: me.plate || '', contacts: [{ name: '', relation: '', phone: '' }, { name: '', relation: '', phone: '' }] }}
-      onBack={() => go({ name: 'settings' })}
-      onSave={async (a) => {
-        await updateDriverApplication(me, a);
-        setSaved(true);
-      }}
-    />
+    <div className="page narrow">
+      <div className="page-head">
+        <button type="button" className="btn ghost" onClick={() => go({ name: 'settings' })}>
+          ← Volver
+        </button>
+        <h2>🛵 Mis datos de repartidor</h2>
+      </div>
+
+      <div className="card">
+        <h3>🔒 Datos verificados</h3>
+        <p className="muted sm">Estos datos los verificó el administrador. Por seguridad no se pueden cambiar desde aquí.</p>
+        <div className="locked-grid">
+          {app.selfieThumb && <img className="lock-avatar" style={{ width: 72, height: 72 }} src={app.selfieThumb} alt="" />}
+          {LOCKED.map(([k, label]) => (
+            <div key={k} className="locked-item">
+              <small>🔒 {label}</small>
+              <b>{show(k)}</b>
+            </div>
+          ))}
+        </div>
+        <details className="sm">
+          <summary>¿Necesitas cambiar un dato bloqueado?</summary>
+          <textarea rows="2" value={req} onChange={(e) => setReq(e.target.value)} placeholder="Ej. Cambié de moto, nueva placa 1234ABC" />
+          <button type="button" className="btn sm" onClick={askChange}>
+            Pedir cambio al administrador
+          </button>
+        </details>
+      </div>
+
+      <div className="card">
+        <h3>✏️ Datos que puedes actualizar</h3>
+        <div className="field">
+          <label>Celular / WhatsApp</label>
+          <input value={f.phone} onChange={(e) => set('phone', e.target.value)} inputMode="tel" />
+        </div>
+        <div className="field">
+          <label>Dirección de domicilio</label>
+          <input value={f.homeAddress} onChange={(e) => set('homeAddress', e.target.value)} placeholder="Zona, calle, número" />
+        </div>
+        <div className="row gap">
+          <div className="field grow">
+            <label>Marca del vehículo</label>
+            <input value={f.brand} onChange={(e) => set('brand', e.target.value)} />
+          </div>
+          <div className="field grow">
+            <label>Color</label>
+            <input value={f.color} onChange={(e) => set('color', e.target.value)} />
+          </div>
+        </div>
+        <h3 style={{ marginTop: 12 }}>📞 Números de confianza</h3>
+        {f.contacts.map((c, i) => (
+          <div key={i} className="row gap wrap contact-row">
+            <div className="field grow">
+              <label>Nombre {i + 1}</label>
+              <input value={c.name} onChange={(e) => setC(i, 'name', e.target.value)} />
+            </div>
+            <div className="field" style={{ width: 120 }}>
+              <label>Parentesco</label>
+              <input value={c.relation} onChange={(e) => setC(i, 'relation', e.target.value)} />
+            </div>
+            <div className="field grow">
+              <label>Celular</label>
+              <input value={c.phone} onChange={(e) => setC(i, 'phone', e.target.value)} inputMode="tel" />
+            </div>
+          </div>
+        ))}
+        {msg && <div className={`alert ${msg.startsWith('✅') ? 'success' : 'error'} sm`}>{msg}</div>}
+        <button className="btn primary block lg" disabled={busy} onClick={save}>
+          {busy ? 'Guardando…' : 'Guardar cambios'}
+        </button>
+      </div>
+    </div>
   );
 }

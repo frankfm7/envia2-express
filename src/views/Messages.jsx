@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { useStore, sendMessage, sendDirect, markRead, dmThread, supportThread, adminUids, ROLE_LABEL } from '../lib/store';
+import { useStore, sendMessage, sendDirect, markRead, dmThread, supportThread, adminUids, ROLE_LABEL, ADMIN_INBOX, supportSeen, markSupportSeen } from '../lib/store';
 import { fmtClock, fmtDate } from '../lib/geo';
 import { whatsappLink, BUSINESS_NAME } from '../lib/config';
 import { WhatsAppIcon } from '../components/Common';
@@ -24,13 +24,15 @@ export default function Messages({ me, go, openId }) {
 
   const admins = adminUids();
   const isAdmin = me.role === 'admin';
-  const unreadOf = (key) => notifications.filter((n) => n.userId === me.id && !n.read && n.shipmentId === key).length;
+  const unreadOf = (key) =>
+    notifications.filter((n) => n.userId === me.id && !n.read && n.shipmentId === key).length ||
+    (isAdmin && key.startsWith('sup:') ? messages.filter((m) => m.threadId === key && m.role !== 'admin' && m.ts > supportSeen(key)).length : 0);
 
   // Conversaciones a partir de los mensajes
   const threads = useMemo(() => {
     const map = new Map();
     messages
-      .filter((m) => (m.participants || []).includes(me.id))
+      .filter((m) => (m.participants || []).includes(me.id) || (isAdmin && (m.participants || []).includes(ADMIN_INBOX)))
       .forEach((m) => {
         const key = m.threadId || m.shipmentId;
         if (!key) return;
@@ -44,7 +46,7 @@ export default function Messages({ me, go, openId }) {
       .filter((s) => [s.clientId, s.driverId, s.recipientUid].includes(me.id) && !['delivered', 'cancelled'].includes(s.status) && s.driverId && s.clientId !== s.driverId)
       .forEach((s) => !map.has(s.id) && map.set(s.id, { key: s.id, last: null, count: 0 }));
     return [...map.values()].sort((a, b) => (b.last?.ts || 0) - (a.last?.ts || 0));
-  }, [messages, shipments, me.id]);
+  }, [messages, shipments, me.id, isAdmin]);
 
   const titleOf = (key) => {
     if (key.startsWith('sup:')) {
@@ -156,7 +158,11 @@ function PeoplePicker({ people, onPick }) {
 
 function Thread({ me, go, k, info, onBack, admins, users }) {
   const { messages } = useStore();
-  const list = useMemo(() => messages.filter((m) => (m.threadId || m.shipmentId) === k && (m.participants || []).includes(me.id)).sort((a, b) => a.ts - b.ts), [messages, k, me.id]);
+  const adminView = me.role === 'admin';
+  const list = useMemo(
+    () => messages.filter((m) => (m.threadId || m.shipmentId) === k && ((m.participants || []).includes(me.id) || (adminView && (m.participants || []).includes(ADMIN_INBOX)))).sort((a, b) => a.ts - b.ts),
+    [messages, k, me.id, adminView]
+  );
   const [text, setText] = useState('');
   const box = useRef(null);
   const isMine = (m) => m.fromId === me.id && (!m.role || m.role === me.role);
@@ -164,11 +170,12 @@ function Thread({ me, go, k, info, onBack, admins, users }) {
     // Se baja al último mensaje DENTRO de la conversación (sin mover la pantalla ni el menú de abajo)
     if (box.current) box.current.scrollTop = box.current.scrollHeight;
     markRead(me.id, k);
+    if (adminView && k.startsWith('sup:')) markSupportSeen(k);
   }, [list.length, k, me.id]);
 
   const otherUser = info.user || (k.startsWith('sup:') && me.role === 'admin' ? users.find((u) => u.id === k.slice(4)) : null);
   const participants = () => {
-    if (k.startsWith('sup:')) return [k.slice(4), ...admins];
+    if (k.startsWith('sup:')) return [k.slice(4), ADMIN_INBOX, ...admins];
     if (k.startsWith('dm:')) return k.slice(3).split('_');
     const s = info.shipment;
     return [s?.clientId, s?.driverId, s?.recipientUid];
@@ -176,10 +183,6 @@ function Thread({ me, go, k, info, onBack, admins, users }) {
   const send = (t) => {
     const v = (t ?? text).trim();
     if (!v) return;
-    if (k.startsWith('sup:') && !admins.length) {
-      alert('El soporte aún no está disponible. Escríbenos por WhatsApp desde Configuración → Asistencia.');
-      return;
-    }
     if (k.startsWith('sup:') || k.startsWith('dm:')) sendDirect(k, me, participants(), v, info.title);
     else sendMessage(k, me, v);
     setText('');

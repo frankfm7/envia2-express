@@ -6,6 +6,28 @@
 
 ---
 
+## Entrega 4.9 (ZIP) — 16 nov 2026 · app versión 1.0.0 · ⚠️ REGLAS ACTUALIZADAS (volver a pegar `firestore.rules`)
+
+**Mensajería (soporte)**
+- Problema: el chat de soporte decía "aún no está disponible" porque dependía de una lista de administradores "registrados" que estaba vacía.
+- Ahora los mensajes de soporte van a un **buzón de administración** (`admins`): cualquier administrador los ve siempre, aunque no esté registrado. El administrador recibe el aviso en la campana y ve el contador de no leídos en Mensajes.
+- `registerAdmin` espera a que carguen los ajustes antes de guardar (antes podía borrar los ajustes si se ejecutaba antes de tiempo).
+
+**Regalos**
+- El regalo ahora **espera la confirmación de la nube**; si la nube lo rechaza, el administrador ve el error (antes decía "✔ Regalo enviado" aunque no se hubiera guardado).
+- El panel del administrador avisa si **Firebase no lo reconoce como administrador** (correo de las reglas distinto): esa es la causa más probable de que no lleguen los regalos ni se guarden los ajustes.
+
+**Mi perfil (clientes y repartidores)**
+- Nuevos datos: **carnet (CI) y expedido**, **mi dirección** (buscador / ubicación de WhatsApp), **referencia**, **forma de pago preferida**.
+- Al pedir un envío ya vienen solos: el origen es tu dirección guardada, el pago es el preferido y la referencia va en las indicaciones. El carnet queda en el pedido (`clientCi`).
+
+**Datos del repartidor**
+- Datos **bloqueados 🔒** (los cambia solo el administrador): nombre, carnet, fecha de nacimiento, vehículo, placa, licencia y fotos. Botón "Pedir cambio al administrador" (llega a Soporte).
+- Datos que puede actualizar: celular, domicilio, marca y color del vehículo, números de confianza.
+- Reglas: el repartidor aprobado solo puede cambiar esos datos básicos en su solicitud, y en su perfil no puede cambiar nombre, placa ni vehículo.
+
+---
+
 ## Entrega 4.8 (ZIP) — 16 nov 2026 · app versión 1.0.0 · sin cambios de reglas ni de datos
 
 **Login con Google: Opción 3 de Firebase (proxy same-origin en Netlify)**

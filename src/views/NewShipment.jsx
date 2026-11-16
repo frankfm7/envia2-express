@@ -11,7 +11,8 @@ import { computeTariff, isNight, RULES, SERVICES, errandAdvance, CONDITIONS } fr
 import { RouteDistance, PriceBreakdown, TariffCard } from '../components/Tariff';
 
 export default function NewShipment({ me, onDone, onCancel, prefill }) {
-  const [pickup, setPickup] = useState(prefill?.a || null);
+  // Origen: la dirección guardada en "Mi perfil" (si no hay, la ubicación GPS)
+  const [pickup, setPickup] = useState(prefill?.a || (me.home?.lat ? me.home : null));
   const [dropoff, setDropoff] = useState(prefill?.b || null);
   const [pickTarget, setPickTarget] = useState('dropoff');
   const [route, setRoute] = useState(null);
@@ -27,8 +28,8 @@ export default function NewShipment({ me, onDone, onCancel, prefill }) {
     purchase: '',
     purchaseAmount: '',
     content: '',
-    notes: '',
-    payment: 'cash',
+    notes: me.homeRef ? `Referencia: ${me.homeRef}` : '',
+    payment: me.payPref || 'cash',
     when: 'now',
     scheduledAt: '',
     declaredValue: '',
@@ -45,7 +46,7 @@ export default function NewShipment({ me, onDone, onCancel, prefill }) {
   const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
 
   useEffect(() => {
-    if (prefill?.a) return;
+    if (prefill?.a || me.home?.lat) return;
     getCurrentPosition().then(async (p) => {
       if (p) setPickup({ lat: p.lat, lng: p.lng, address: await reverseGeocode(p) });
     });

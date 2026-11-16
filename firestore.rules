@@ -34,7 +34,11 @@ service cloud.firestore {
             && request.resource.data.approved == resource.data.approved
             && (request.resource.data.get('driverStatus', 'none') == resource.data.get('driverStatus', 'none')
                 || request.resource.data.driverStatus == 'pending')
-            && request.resource.data.get('authCode', null) == resource.data.get('authCode', null))
+            && request.resource.data.get('authCode', null) == resource.data.get('authCode', null)
+            // Repartidor: nombre, placa y vehículo son datos verificados (solo los cambia el administrador)
+            && (resource.data.role != 'driver' || (request.resource.data.get('name', null) == resource.data.get('name', null)
+                && request.resource.data.get('plate', null) == resource.data.get('plate', null)
+                && request.resource.data.get('vehicle', null) == resource.data.get('vehicle', null))))
         // Activación de repartidor: solo con el código que generó el administrador
         || (request.auth.uid == uid
             && resource.data.get('driverStatus', 'none') == 'code_sent'
@@ -49,9 +53,12 @@ service cloud.firestore {
     match /driverApps/{uid} {
       allow read: if signedIn() && (request.auth.uid == uid || isAdmin());
       allow create: if isAdmin() || (signedIn() && request.auth.uid == uid && request.resource.data.status == 'pending');
-      // El repartidor puede actualizar sus datos, pero no cambiar el estado de su solicitud
-      allow update: if isAdmin() || (signedIn() && request.auth.uid == uid
-        && (request.resource.data.status == 'pending' || request.resource.data.status == resource.data.status));
+      // Solicitud nueva o corregida (rechazada): se puede reenviar completa como "pending".
+      // Repartidor YA APROBADO: solo datos básicos; nombre, carnet, placa, vehículo, licencia y fotos quedan bloqueados.
+      allow update: if isAdmin() || (signedIn() && request.auth.uid == uid && (
+        (resource.data.status != 'approved' && (request.resource.data.status == 'pending' || request.resource.data.status == resource.data.status))
+        || (resource.data.status == 'approved' && request.resource.data.status == 'approved'
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['phone', 'homeAddress', 'brand', 'color', 'contacts', 'updatedAt']))));
       allow delete: if isAdmin();
     }
 

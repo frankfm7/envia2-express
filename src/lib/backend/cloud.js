@@ -13,6 +13,7 @@ import {
   updateDoc,
   deleteDoc,
   getDoc,
+  getDocFromServer,
   onSnapshot,
   collection,
   query,
@@ -157,6 +158,8 @@ export function createCloudBackend(ctx) {
       }
     }
     listen('msgs', 'messages', query(collection(db, 'messages'), where('participants', 'array-contains', uid)));
+    // Administrador: también el buzón de soporte (mensajes de clientes y repartidores a la administración)
+    if (me.role === 'admin') listen('support', 'messages', query(collection(db, 'messages'), where('participants', 'array-contains', 'admins')));
     listen('notifs', 'notifications', query(collection(db, 'notifications'), where('userId', '==', uid)));
     // Ajustes del negocio (QR de cobro) y promociones (puntos / cupones)
     listen('settings', 'settings', collection(db, 'settings'));
@@ -372,6 +375,16 @@ export function createCloudBackend(ctx) {
     async loginPhoneConfirm(code) {
       if (!this._confirm) throw new Error('Primero pide el código');
       await this._confirm.confirm(code);
+    },
+    /** ¿Las reglas de Firebase reconocen a esta cuenta como administrador? (lectura que solo el admin puede hacer) */
+    async adminRulesOk() {
+      if (!navigator.onLine) return true;
+      try {
+        await getDocFromServer(ref('driverCodes', '__check__'));
+        return true;
+      } catch (e) {
+        return e.code !== 'permission-denied';
+      }
     },
     getOne: async (col, id) => {
       const d = await getDoc(ref(col, id)).catch(() => null);

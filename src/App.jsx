@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { useStore, useSession, useSync, markRead, claimShipment, CLOUD, getViewRole, ROLE_LABEL, registerAdmin } from './lib/store';
+import { useStore, useSession, useSync, markRead, claimShipment, CLOUD, getViewRole, ROLE_LABEL, registerAdmin, ADMIN_INBOX, supportSeen } from './lib/store';
 import AppLock from './components/AppLock';
 import { ProfilePage, SettingsPage, AddressesPage, Avatar } from './views/Account';
 import DriverApply, { submitDraftIfAny, loadDraft } from './views/DriverApply';
@@ -84,7 +84,7 @@ function beep() {
 /** Avisos: toast en pantalla + sonido + vibración + notificación del sistema */
 function useNotifications(me, go) {
   const { notifications } = useStore();
-  const { shipments, users } = useStore();
+  const { shipments, users, messages } = useStore();
   const mine = useMemo(() => {
     const list = me ? notifications.filter((n) => n.userId === me.id) : [];
     // Repartidores: aviso local de cada envío nuevo disponible (no gasta escrituras en la nube)
@@ -97,8 +97,16 @@ function useNotifications(me, go) {
       users
         .filter((u) => u.driverStatus === 'pending')
         .forEach((u) => list.push({ id: 'app_' + u.id + '_' + (u.driverApp?.sentAt || 0), shipmentId: 'driver-app', text: `🛵 Solicitud de repartidor: ${u.driverApp?.fullName || u.name}. Toca para revisarla.`, ts: u.driverApp?.sentAt || u.createdAt || 0, read: false, local: true, keep: true }));
+    // Administrador: mensajes de soporte sin leer (llegan al buzón de administración, aunque no esté "registrado")
+    if (me?.role === 'admin') {
+      const last = new Map();
+      (messages || [])
+        .filter((m) => m.threadId?.startsWith('sup:') && (m.participants || []).includes(ADMIN_INBOX) && m.role !== 'admin' && m.ts > supportSeen(m.threadId))
+        .forEach((m) => (!last.has(m.threadId) || last.get(m.threadId).ts < m.ts) && last.set(m.threadId, m));
+      last.forEach((m) => list.push({ id: 'sup_' + m.id, shipmentId: m.threadId, text: `💬 ${m.fromName}: ${m.text}`, ts: m.ts, read: false, local: true }));
+    }
     return list;
-  }, [notifications, shipments, users, me]);
+  }, [notifications, shipments, users, messages, me]);
   const seen = useRef(null);
   const [toasts, setToasts] = useState([]);
 

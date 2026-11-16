@@ -1,5 +1,5 @@
 import { useMemo, useRef, useState } from 'react';
-import { useStore, saveReward, useSettings, saveSettings, notifyUser } from '../lib/store';
+import { useStore, saveReward, saveRewardStrict, useSettings, saveSettings, notifyUser } from '../lib/store';
 import { PROMO, WHEEL, usePromo, pickPrize, spinRecord, getWheel, defaultWheelForEditor, PRIZE_TYPES, giftRecord } from '../lib/promo';
 import { fmtDate } from '../lib/geo';
 import { money } from '../lib/config';
@@ -392,7 +392,13 @@ function GiftPanel({ me }) {
   const give = async () => {
     const opts = { days, note, ...(kind === 'pct' ? { pct: value } : kind === 'free' ? { free: value } : kind === 'spins' ? { spins: value } : { points: value }) };
     const rec = giftRecord(me, client, opts);
-    await saveReward(rec);
+    setDone('Enviando…');
+    try {
+      await saveRewardStrict(rec); // espera la confirmación de la nube
+    } catch (e) {
+      setDone('✖ No se pudo enviar el regalo: ' + (e.message || 'error') + ' (revisa que tu correo esté en las reglas de Firebase como administrador).');
+      return;
+    }
     const what = kind === 'pct' ? `un cupón de ${value} % de descuento` : kind === 'free' ? `${value} envío(s) GRATIS` : kind === 'spins' ? `${value} giro(s) GRATIS en la ruleta` : `${value} puntos`;
     notifyUser(client.id, null, `🎁 ¡Tienes un regalo de Envia2 Express: ${what}! Míralo en Promociones.${note ? ' ' + note : ''}`);
     setDone(`✔ Regalo enviado a ${client.name}: ${what}`);
@@ -464,7 +470,7 @@ function GiftPanel({ me }) {
               </button>
             </div>
           )}
-          {done && <div className="alert success-box sm">{done}</div>}
+          {done && <div className={`alert ${done.startsWith('✖') ? 'error' : 'success-box'} sm`}>{done}</div>}
           {!!gifts.length && (
             <>
               <h4>Regalos enviados</h4>

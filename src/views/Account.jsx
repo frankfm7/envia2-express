@@ -56,9 +56,24 @@ export function ProfilePage({ me, go }) {
   const [name, setName] = useState(me.name || '');
   const [phone, setPhone] = useState(me.phone || '');
   const [alias, setAlias] = useState(me.alias || '');
+  const [ci, setCi] = useState(me.ci || '');
+  const [ciExt, setCiExt] = useState(me.ciExt || 'OR');
+  const [home, setHome] = useState(me.home || null);
+  const [homeRef, setHomeRef] = useState(me.homeRef || '');
+  const [payPref, setPayPref] = useState(me.payPref || 'cash');
   const [saved, setSaved] = useState(false);
+  const lockedName = me.role === 'driver' && me.approved; // nombre verificado del repartidor
   const save = () => {
-    updateUser(me.id, { name: name.trim(), phone: phone.replace(/[^\d+]/g, ''), alias: cleanAlias(alias) || null });
+    updateUser(me.id, {
+      ...(!lockedName && { name: name.trim() }),
+      phone: phone.replace(/[^\d+]/g, ''),
+      alias: cleanAlias(alias) || null,
+      ci: ci.replace(/\D/g, '') || null,
+      ciExt,
+      home: home ? { lat: home.lat, lng: home.lng, address: home.address } : null,
+      homeRef: homeRef.trim(),
+      payPref,
+    });
     setSaved(true);
     setTimeout(() => setSaved(false), 1500);
   };
@@ -87,9 +102,10 @@ export function ProfilePage({ me, go }) {
 
       <div className="card">
         <h3>Mis datos</h3>
+        <p className="muted sm">Guarda tus datos una vez: se usan solos al pedir un envío.</p>
         <div className="field">
-          <label>Nombre</label>
-          <input value={name} onChange={(e) => setName(e.target.value)} />
+          <label>{lockedName ? '🔒 Nombre (verificado)' : 'Nombre completo'}</label>
+          <input value={name} onChange={(e) => setName(e.target.value)} disabled={lockedName} />
         </div>
         <div className="field">
           <label>Alias (cómo te saludamos)</label>
@@ -98,6 +114,33 @@ export function ProfilePage({ me, go }) {
         <div className="field">
           <label>Celular / WhatsApp</label>
           <input value={phone} onChange={(e) => setPhone(e.target.value)} inputMode="tel" />
+        </div>
+        <div className="row gap">
+          <div className="field grow">
+            <label>N° de carnet (CI)</label>
+            <input value={ci} onChange={(e) => setCi(e.target.value.replace(/\D/g, ''))} inputMode="numeric" placeholder="1234567" />
+          </div>
+          <div className="field" style={{ width: 90 }}>
+            <label>Exp.</label>
+            <select value={ciExt} onChange={(e) => setCiExt(e.target.value)}>
+              {['OR', 'LP', 'CB', 'SC', 'PT', 'CH', 'TJ', 'BE', 'PD'].map((d) => (
+                <option key={d}>{d}</option>
+              ))}
+            </select>
+          </div>
+        </div>
+        <AddressInput label="Mi dirección (domicilio)" value={home} onChange={setHome} placeholder="Busca tu calle o pega tu ubicación" />
+        <div className="field">
+          <label>Referencia de la dirección</label>
+          <input value={homeRef} onChange={(e) => setHomeRef(e.target.value)} placeholder="Ej. portón negro, frente a la farmacia, piso 2" />
+        </div>
+        <div className="field">
+          <label>Forma de pago preferida</label>
+          <select value={payPref} onChange={(e) => setPayPref(e.target.value)}>
+            <option value="cash">Efectivo al repartidor</option>
+            <option value="transfer">Transferencia / QR</option>
+            <option value="card">Tarjeta</option>
+          </select>
         </div>
         {me.email && (
           <div className="field">
