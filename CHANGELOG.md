@@ -6,6 +6,29 @@
 
 ---
 
+## Entrega 4.3 (ZIP) — 16 nov 2026 · app versión 1.0.0 · ⚠️ reglas de Firebase actualizadas
+
+**Entrada**
+- Se quitó Facebook. Nuevo **"Entrar con mi usuario"** (correo y contraseña, gratis): ya tengo usuario, crear cuenta y recuperar contraseña.
+- **No vuelve a pedir Google**: la app ya no muestra la pantalla de ingreso mientras carga la cuenta (era la causa de "me saca"). La sesión dura hasta "Cerrar sesión".
+- La app **siempre abre en la pantalla de entrada** con el botón **Entrar**; si la persona activó seguridad (código, patrón o huella), se pide ahí.
+- La primera vez se **recomienda activar la seguridad** ("Protege tu app").
+
+**Menú y pantallas**
+- Menú inferior: Inicio · Pedidos · **Mensajes** · Promociones · Configuración. **Historial** pasó dentro de Pedidos (pestañas En curso / Historial).
+- **Configuración en botones**: cada opción se abre solo al tocarla (Seguridad, Cambiar de perfil, Direcciones, Notificaciones, Apariencia, Código promocional, Asistencia, Repartidor, Tarifas, Condiciones, Recomendar, Acerca de, Cerrar sesión).
+- Encabezado: **ícono + letras del logo**.
+
+**Mensajes**
+- Chats de cada pedido y **chat directo**: el administrador escribe a cualquier repartidor o cliente; clientes y repartidores tienen **Soporte** con el administrador. Contador de no leídos en el menú, llamar y WhatsApp desde el chat.
+
+**Avisos al administrador**
+- **Solicitudes de repartidores nuevos**: aviso emergente y en la campana (no se pierde aunque llegue con la app cerrada); al tocarlo abre Repartidores. También avisa cuando un repartidor actualiza sus datos.
+
+**Promociones (administrador)**
+- **Regalar** a un cliente: cupón %, envíos gratis, **giros de ruleta** o puntos (con vencimiento y mensaje); al cliente le llega el aviso.
+- **Configurar la ruleta**: nombre, color, tipo de premio, valor y **probabilidad** de cada casilla (deben sumar 100 %), con vista previa y botón para restaurar.
+
 ## Entrega 4.2 (ZIP) — 15 nov 2026 · app versión 1.0.0 · ⚠️ reglas de Firebase actualizadas
 
 **Ingreso**

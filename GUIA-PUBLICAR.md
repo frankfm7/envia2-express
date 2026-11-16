@@ -8,7 +8,7 @@ Orden recomendado:
                                      4. Base de datos (Firebase) ◄─┘  (opcional al inicio: sin ella funciona en modo demo)
 ```
 
-> **Versión:** la app es la **versión 1.0.0** y se queda así hasta que se decida un cambio grande. Los ZIP que recibes se numeran aparte (`envia2-express-v4.2.zip`, `-v3`…) solo para saber cuál es el más nuevo. Ver `CHANGELOG.md`.
+> **Versión:** la app es la **versión 1.0.0** y se queda así hasta que se decida un cambio grande. Los ZIP que recibes se numeran aparte (`envia2-express-v4.3.zip`, `-v3`…) solo para saber cuál es el más nuevo. Ver `CHANGELOG.md`.
 
 ---
 
@@ -27,7 +27,7 @@ git --version
 
 Si ambos muestran un número de versión, está listo.
 
-4. Descomprime **envia2-express-v4.2.zip**, por ejemplo en el Escritorio. Queda la carpeta `envia2-express`.
+4. Descomprime **envia2-express-v4.3.zip**, por ejemplo en el Escritorio. Queda la carpeta `envia2-express`.
 
 ---
 
@@ -105,7 +105,7 @@ cd C:\Users\TU_USUARIO\Desktop\envia2-express
 git add .
 ```
 ```bash
-git commit -m "Actualizacion 4.2: Facebook, informes, ofertas, repartidores"
+git commit -m "Actualizacion 4.3: entrada, mensajes, promociones"
 ```
 ```bash
 git push
@@ -162,28 +162,12 @@ La app **ya trae lista la conexión a Firebase** (Google): plan gratis sin tarje
    > ⚠️ Cada vez que recibas un ZIP que diga "reglas actualizadas" en el CHANGELOG, vuelve a pegar y publicar `firestore.rules` (la 4 y la 4.1 las cambiaron).
 6. *Authentication → Settings → Dominios autorizados* → **Agregar dominio** → `envia2-express.netlify.app` (tu dominio de Netlify, sin `https://`).
 
-### 🔵 Activar "Continuar con Facebook" (gratis)
+### 👤 Activar "Entrar con mi usuario" (correo y contraseña, gratis)
 
-**A. En Meta (Facebook)**
-1. Entra a https://developers.facebook.com con tu cuenta de Facebook → **Mis apps → Crear app**.
-2. Caso de uso: **"Autenticar y solicitar datos a los usuarios con el inicio de sesión con Facebook"** → nombre `Envia2 Express` → crear.
-3. **Configuración de la app → Básica**:
-   - Copia el **Identificador de la app** (App ID) y la **Clave secreta de la app** (App Secret, botón "Mostrar").
-   - **URL de la política de privacidad:** `https://envia2-express.netlify.app/privacidad.html` (ya viene en la app).
-   - **URL de instrucciones de eliminación de datos:** `https://envia2-express.netlify.app/privacidad.html#eliminar`
-   - Categoría: *Negocios y páginas* (o la que más se parezca) → **Guardar cambios**.
-
-**B. En Firebase**
-4. **Authentication → Sign-in method → Agregar proveedor nuevo → Facebook** → actívalo → pega el **App ID** y el **App Secret**.
-5. Firebase muestra una **"URI de redireccionamiento de OAuth"** (algo como `https://TU-PROYECTO.firebaseapp.com/__/auth/handler`) → **cópiala** → Guardar.
-
-**C. De vuelta en Meta**
-6. **Inicio de sesión con Facebook → Configuración** → en **"URI de redireccionamiento de OAuth válidos"** pega la URI del paso 5 → **Guardar cambios**.
-7. Arriba, cambia la app de **"En desarrollo"** a **"En vivo"** (Publicar). Mientras esté "En desarrollo", solo podrás entrar tú y las personas que agregues como evaluadores.
-   - Los permisos `email` y `public_profile` no necesitan revisión de Meta.
-
-> Si alguien abre el enlace de la app **dentro de Facebook o Messenger**, el ingreso puede fallar: que lo abra en **Chrome** (⋮ → *Abrir en el navegador*).
-> Si una persona entró antes con Google usando el mismo correo, la app le pedirá usar Google.
+1. Firebase → **Authentication → Sign-in method** (Método de acceso) → **Agregar proveedor nuevo** → **Correo electrónico/contraseña**.
+2. Activa el primer interruptor (**Correo electrónico/contraseña**) → **Guardar**. (El segundo, "vínculo por correo", no hace falta.)
+3. Listo: en la app aparecen **"Ya tengo usuario"**, **"Crear cuenta"** y **"¿Olvidaste tu contraseña?"** (Firebase envía gratis el correo para cambiarla).
+4. Opcional: en *Authentication → Templates* (Plantillas) puedes poner el correo de recuperación en español y con el nombre de tu negocio.
 
 ### 📱 (Opcional, con costo) Ingreso con número de celular
 
@@ -278,9 +262,9 @@ Luego *Deploys → Trigger deploy → Deploy site* para que tome las claves.
 
 | Problema | Solución |
 |---|---|
-| Se cierra la sesión cada hora | Ver la sección "Si la app pide iniciar sesión otra vez cada hora" (clave de API). |
-| Facebook: "URL bloqueada" o "app no disponible" | Revisa el paso 6 (URI de redireccionamiento) y que la app esté "En vivo". |
-| "El ingreso por celular no está activado" | Está desactivado a propósito (los SMS cuestan). Usa Google o Facebook. |
+| Pide Google otra vez | La 4.3 corrige el caso más común (la app mostraba la entrada mientras cargaba la cuenta). Si aún pasa: sección "Si la app pide iniciar sesión otra vez cada hora" (clave de API). |
+| "Ese método de ingreso no está activado" al usar correo | Activa *Correo electrónico/contraseña* (sección "Entrar con mi usuario"). |
+| "El ingreso por celular no está activado" | Está desactivado a propósito (los SMS cuestan). Usa Google o "Entrar con mi usuario". |
 | `git` o `npm` "no se reconoce como comando" | Instala Git / Node (Paso 0) y **cierra y abre** el CMD. |
 | `git push` pide usuario/contraseña | Usa la ventana de inicio de sesión de GitHub; si no aparece, instala Git de nuevo con las opciones por defecto (incluye "Git Credential Manager"). |
 | `error: remote origin already exists` | Ya estaba conectado; sigue con `git push -u origin main`. |

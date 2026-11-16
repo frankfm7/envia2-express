@@ -108,15 +108,35 @@ export function PinPad({ length = 4, onDone, error }) {
   );
 }
 
+const ENTERED = 'envia2:entered';
+const SUGGESTED = 'envia2:lock-suggested:';
+const entered = () => {
+  try {
+    return sessionStorage.getItem(ENTERED) === '1';
+  } catch {
+    return false;
+  }
+};
+
 /**
- * Pantalla de bloqueo. Se muestra al abrir la app y al volver después de 1 minuto
- * en segundo plano, si el usuario activó un bloqueo en Configuración.
+ * Pantalla de ENTRADA: la app siempre abre aquí (aunque la sesión siga guardada).
+ * • Sin seguridad: botón "Entrar".
+ * • Con seguridad: pide código, patrón o huella.
+ * Además vuelve a pedir la seguridad si la app estuvo en segundo plano más de 1 minuto.
  */
-export default function AppLock({ me, children }) {
+export default function AppLock({ me, children, onSecurity }) {
   const cfg = getLock(me.id);
-  const [locked, setLocked] = useState(() => !!cfg && Date.now() - lastActive() > LOCK_AFTER_MS);
+  const [locked, setLocked] = useState(() => !entered());
   const [error, setError] = useState(false);
   const [tries, setTries] = useState(0);
+  // Recomendar seguridad la primera vez (también si recién inició sesión)
+  const [suggest, setSuggest] = useState(() => {
+    try {
+      return entered() && !getLock(me.id) && !localStorage.getItem(SUGGESTED + me.id);
+    } catch {
+      return false;
+    }
+  });
 
   useEffect(() => {
     const onVis = () => {
@@ -133,9 +153,20 @@ export default function AppLock({ me, children }) {
   }, [me.id]);
 
   const ok = () => {
+    try {
+      sessionStorage.setItem(ENTERED, '1');
+    } catch {
+      /* sin almacenamiento */
+    }
     markActive();
     setLocked(false);
     setTries(0);
+    // Recomendar seguridad la primera vez
+    try {
+      if (!getLock(me.id) && !localStorage.getItem(SUGGESTED + me.id)) setSuggest(true);
+    } catch {
+      /* sin almacenamiento */
+    }
   };
   const fail = () => {
     setError(true);
@@ -150,35 +181,75 @@ export default function AppLock({ me, children }) {
       fail();
     }
   };
-  useEffect(() => {
-    if (locked && cfg?.type === 'bio') tryBio();
-  }, [locked]); // eslint-disable-line react-hooks/exhaustive-deps
+  const dismissSuggest = () => {
+    try {
+      localStorage.setItem(SUGGESTED + me.id, '1');
+    } catch {
+      /* sin almacenamiento */
+    }
+    setSuggest(false);
+  };
 
-  if (!locked || !cfg) return children;
+  if (!locked)
+    return (
+      <>
+        {children}
+        {suggest && (
+          <div className="prize-bg" onClick={dismissSuggest}>
+            <div className="prize" onClick={(e) => e.stopPropagation()}>
+              <div className="prize-emoji">🔒</div>
+              <h2>Protege tu app</h2>
+              <p className="muted">Te recomendamos activar un código, patrón o tu huella para que nadie más pueda entrar a tu cuenta desde este celular.</p>
+              <button
+                className="btn primary block lg"
+                onClick={() => {
+                  dismissSuggest();
+                  onSecurity?.();
+                }}
+              >
+                Activar seguridad
+              </button>
+              <button className="btn ghost block" onClick={dismissSuggest}>
+                Ahora no
+              </button>
+            </div>
+          </div>
+        )}
+      </>
+    );
+
   return (
     <div className="lock-screen">
-      <LogoMark size={84} />
+      <img src="./wordmark.png" alt="Envia2 express" className="lock-wordmark" />
+      {me.photo ? <img src={me.photo} alt="" className="lock-avatar" referrerPolicy="no-referrer" /> : <div className="lock-avatar initial">{(me.name || '?')[0]}</div>}
       <h2>Hola, {me.name?.split(' ')[0]}</h2>
-      <p className="muted">
-        {cfg.type === 'pin' ? 'Ingresa tu código' : cfg.type === 'pattern' ? 'Dibuja tu patrón' : 'Desbloquea con tu huella o Face ID'}
-      </p>
-      {cfg.type === 'pin' && <PinPad length={cfg.length || 4} error={error} onDone={async (v) => ((await checkSecret(me.id, v)) ? ok() : fail())} />}
-      {cfg.type === 'pattern' && <PatternPad error={error} onDone={async (v) => ((await checkSecret(me.id, v)) ? ok() : fail())} />}
-      {cfg.type === 'bio' && (
-        <button className="btn primary lg" onClick={tryBio}>
-          👆 Usar huella / Face ID
+      {!cfg && (
+        <button className="btn enter-btn lg" onClick={ok}>
+          Entrar
+        </button>
+      )}
+      {cfg && (
+        <p className="muted">
+          {cfg.type === 'pin' ? 'Ingresa tu código' : cfg.type === 'pattern' ? 'Dibuja tu patrón' : 'Desbloquea con tu huella o Face ID'}
+        </p>
+      )}
+      {cfg?.type === 'pin' && <PinPad length={cfg.length || 4} error={error} onDone={async (v) => ((await checkSecret(me.id, v)) ? ok() : fail())} />}
+      {cfg?.type === 'pattern' && <PatternPad error={error} onDone={async (v) => ((await checkSecret(me.id, v)) ? ok() : fail())} />}
+      {cfg?.type === 'bio' && (
+        <button className="btn enter-btn lg" onClick={tryBio}>
+          👆 Entrar con huella / Face ID
         </button>
       )}
       {tries >= 3 && <div className="alert error sm">Intentos fallidos: {tries}</div>}
       <button
         className="btn ghost sm"
         onClick={() => {
-          if (!confirm('Se cerrará la sesión y se quitará el bloqueo de este celular. ¿Continuar?')) return;
+          if (cfg && !confirm('Se cerrará la sesión y se quitará el bloqueo de este celular. ¿Continuar?')) return;
           clearLock(me.id);
           logout();
         }}
       >
-        ¿Lo olvidaste? Cerrar sesión
+        {cfg ? '¿Lo olvidaste? Cerrar sesión' : 'Usar otra cuenta'}
       </button>
     </div>
   );

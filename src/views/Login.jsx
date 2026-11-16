@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { localLogin, loginGoogle, loginFacebook, loginPhoneStart, loginPhoneConfirm, saveProfile, logout, CLOUD } from '../lib/store';
+import { localLogin, loginGoogle, loginEmail, registerEmail, resetPassword, loginPhoneStart, loginPhoneConfirm, saveProfile, logout, CLOUD } from '../lib/store';
 import { APP_VERSION, WHATSAPP_COUNTRY_CODE } from '../lib/config';
 import { LogoFull } from '../components/Logo';
 import { ApplyForm, loadDraft, clearDraft } from './DriverApply';
@@ -43,12 +43,6 @@ const GoogleLogo = () => (
   </svg>
 );
 
-const FacebookLogo = () => (
-  <svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true">
-    <path fill="#fff" d="M24 12.07C24 5.4 18.63 0 12 0S0 5.4 0 12.07C0 18.1 4.39 23.1 10.13 24v-8.44H7.08v-3.49h3.05V9.41c0-3.02 1.79-4.69 4.53-4.69 1.31 0 2.68.24 2.68.24v2.97h-1.51c-1.49 0-1.96.93-1.96 1.89v2.25h3.33l-.53 3.49h-2.8V24C19.61 23.1 24 18.1 24 12.07z" />
-  </svg>
-);
-
 const authError = (e) => {
   const c = e?.code || '';
   if (!navigator.onLine) return 'Necesitas internet para entrar la primera vez. Después la app funciona sin señal.';
@@ -60,6 +54,10 @@ const authError = (e) => {
   if (c === 'auth/unauthorized-domain') return 'Este dominio no está autorizado en Firebase (ver la guía).';
   if (c === 'auth/account-exists-with-different-credential') return 'Ese correo ya entró antes con Google. Usa "Continuar con Google".';
   if (c === 'auth/operation-not-allowed') return 'Ese método de ingreso no está activado en Firebase (ver la guía).';
+  if (c === 'auth/invalid-credential' || c === 'auth/wrong-password' || c === 'auth/user-not-found') return 'Correo o contraseña incorrectos.';
+  if (c === 'auth/email-already-in-use') return 'Ese correo ya tiene una cuenta: usa "Ya tengo usuario".';
+  if (c === 'auth/weak-password') return 'La contraseña debe tener al menos 6 caracteres.';
+  if (c === 'auth/invalid-email') return 'Correo no válido.';
   return 'No se pudo entrar: ' + (c || e?.message);
 };
 
@@ -130,6 +128,68 @@ function PhoneLogin() {
       )}
       {err && <div className="alert error sm">{err}</div>}
     </div>
+  );
+}
+
+/** Entrar con usuario (correo + contraseña), crear cuenta o recuperar contraseña — gratis */
+function EmailLogin() {
+  const [mode, setMode] = useState('login'); // login | register | reset
+  const [email, setEmail] = useState('');
+  const [pass, setPass] = useState('');
+  const [name, setName] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState('');
+  const [err, setErr] = useState('');
+  const submit = async (e) => {
+    e.preventDefault();
+    setErr('');
+    setMsg('');
+    setBusy(true);
+    try {
+      if (mode === 'login') await loginEmail(email, pass);
+      else if (mode === 'register') {
+        if (name.trim().length < 2) throw Object.assign(new Error('Escribe tu nombre'), { code: '' });
+        await registerEmail(email, pass, name.trim());
+      } else {
+        await resetPassword(email);
+        setMsg('📧 Te enviamos un correo para crear una nueva contraseña. Revisa también "Spam".');
+      }
+    } catch (e2) {
+      setErr(e2.code ? authError(e2) : e2.message);
+    }
+    setBusy(false);
+  };
+  return (
+    <form className="email-login" onSubmit={submit}>
+      <div className="seg">
+        <button type="button" className={mode === 'login' ? 'on' : ''} onClick={() => setMode('login')}>
+          Ya tengo usuario
+        </button>
+        <button type="button" className={mode === 'register' ? 'on' : ''} onClick={() => setMode('register')}>
+          Crear cuenta
+        </button>
+      </div>
+      {mode === 'register' && <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Tu nombre" autoComplete="name" aria-label="Nombre" />}
+      <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="tu@correo.com" autoComplete="email" aria-label="Correo" required />
+      {mode !== 'reset' && (
+        <input type="password" value={pass} onChange={(e) => setPass(e.target.value)} placeholder="Contraseña (mínimo 6)" autoComplete={mode === 'login' ? 'current-password' : 'new-password'} aria-label="Contraseña" required minLength={6} />
+      )}
+      <button className="btn primary block lg" disabled={busy}>
+        {busy ? 'Un momento…' : mode === 'login' ? 'Entrar' : mode === 'register' ? 'Crear mi cuenta' : 'Enviarme el correo'}
+      </button>
+      {mode === 'login' && (
+        <button type="button" className="btn ghost sm" onClick={() => setMode('reset')}>
+          ¿Olvidaste tu contraseña?
+        </button>
+      )}
+      {mode === 'reset' && (
+        <button type="button" className="btn ghost sm" onClick={() => setMode('login')}>
+          ← Volver
+        </button>
+      )}
+      {msg && <div className="alert success-box sm">{msg}</div>}
+      {err && <div className="alert error sm">{err}</div>}
+    </form>
   );
 }
 
@@ -300,19 +360,14 @@ export default function Login({ session, claim }) {
             >
               <GoogleLogo /> Continuar con Google
             </button>
-            <button
-              className="btn block lg facebook"
-              onClick={async () => {
-                setErr('');
-                try {
-                  await loginFacebook();
-                } catch (e) {
-                  setErr(authError(e));
-                }
-              }}
-            >
-              <FacebookLogo /> Continuar con Facebook
-            </button>
+            <div className="or">o</div>
+            {method === 'email' ? (
+              <EmailLogin />
+            ) : (
+              <button className="btn block lg user-btn" onClick={() => setMethod('email')}>
+                👤 Entrar con mi usuario (correo y contraseña)
+              </button>
+            )}
             {PHONE_LOGIN &&
               (method === 'phone' ? (
                 <PhoneLogin />

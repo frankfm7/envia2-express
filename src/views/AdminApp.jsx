@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import MapView from '../components/MapView';
 import Receipt from '../components/Receipt';
 import { StatusBadge, Modal, Timeline, ContactBar } from '../components/Common';
@@ -14,7 +14,10 @@ import { fmtDate } from '../lib/geo';
 import { money, SIZES } from '../lib/config';
 
 export default function AdminApp({ me, view }) {
-  const [tab, setTab] = useState('panel');
+  const [tab, setTab] = useState(view?.id === 'drivers' ? 'drivers' : 'panel');
+  useEffect(() => {
+    if (view?.id === 'drivers') setTab('drivers');
+  }, [view?.id]);
   const { users } = useStore();
   const pendingApps = users.filter((u) => u.driverStatus === 'pending').length;
   if (view?.name === 'orders') return <div className="page"><Dashboard mode="orders" /></div>;

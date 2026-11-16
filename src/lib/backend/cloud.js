@@ -3,7 +3,7 @@
 //  - Firestore con caché sin conexión: si no hay señal, todo (firmas, fotos,
 //    estados) se guarda en el celular y se sube solo cuando vuelve internet.
 import { initializeApp } from 'firebase/app';
-import { initializeAuth, indexedDBLocalPersistence, browserLocalPersistence, browserPopupRedirectResolver, GoogleAuthProvider, FacebookAuthProvider, signInWithPopup, signInWithRedirect, getRedirectResult, onAuthStateChanged, signOut, RecaptchaVerifier, signInWithPhoneNumber } from 'firebase/auth';
+import { initializeAuth, indexedDBLocalPersistence, browserLocalPersistence, browserPopupRedirectResolver, GoogleAuthProvider, signInWithEmailAndPassword, createUserWithEmailAndPassword, sendPasswordResetEmail, updateProfile, signInWithPopup, signInWithRedirect, getRedirectResult, onAuthStateChanged, signOut, RecaptchaVerifier, signInWithPhoneNumber } from 'firebase/auth';
 import {
   initializeFirestore,
   persistentLocalCache,
@@ -168,7 +168,10 @@ export function createCloudBackend(ctx) {
         doc(db, 'users', u.uid),
         (d) => {
           if (!d.exists()) {
+            // Si el perfil aún no llegó de la caché, NO mostrar la pantalla de Google:
+            // la sesión sigue abierta; se muestra "Cargando tu cuenta…" hasta que llegue del servidor.
             if (!d.metadata.fromCache || !navigator.onLine) ctx.setSession({ ...base, needsProfile: true });
+            else ctx.setSession(base);
             setSync({ ready: true });
             return;
           }
@@ -246,12 +249,16 @@ export function createCloudBackend(ctx) {
       provider.setCustomParameters({ prompt: 'select_account' });
       return this.loginWith(provider);
     },
-    /** Entrar con Facebook (gratis) */
-    async loginFacebook() {
-      const provider = new FacebookAuthProvider();
-      provider.addScope('email');
-      provider.addScope('public_profile');
-      return this.loginWith(provider);
+    /** Entrar con usuario (correo + contraseña) — gratis */
+    async loginEmail(email, password) {
+      await signInWithEmailAndPassword(auth, email.trim(), password);
+    },
+    async registerEmail(email, password, name) {
+      const cred = await createUserWithEmailAndPassword(auth, email.trim(), password);
+      if (name) await updateProfile(cred.user, { displayName: name }).catch(() => {});
+    },
+    async resetPassword(email) {
+      await sendPasswordResetEmail(auth, email.trim());
     },
     async loginWith(provider) {
       try {

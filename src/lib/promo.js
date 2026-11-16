@@ -33,6 +33,27 @@ export const WHEEL = [
 
 const DAY = 864e5;
 
+/** Tipos de premio para el editor de la ruleta */
+export const PRIZE_TYPES = { pct: '% de descuento', free: 'Envíos gratis', points: 'Puntos extra', none: 'Sin premio' };
+
+/** Pasa un premio del editor ({type, value}) al formato interno ({pct|free|points}) */
+const normalize = (w) => ({
+  ...w,
+  pct: w.type === 'pct' ? Number(w.value) || 0 : w.pct || 0,
+  free: w.type === 'free' ? Number(w.value) || 0 : w.free || 0,
+  points: w.type === 'points' ? Number(w.value) || 0 : w.points || 0,
+  key: w.key || w.label,
+  weight: Number(w.weight) || 0,
+});
+/** Ruleta configurada por el administrador (o la de fábrica) */
+export function getWheel(settings) {
+  const w = settings?.wheel;
+  return Array.isArray(w) && w.length >= 4 && w.some((x) => Number(x.weight) > 0) ? w.map(normalize) : WHEEL;
+}
+/** La ruleta de fábrica en formato editable */
+export const defaultWheelForEditor = () =>
+  WHEEL.map((w) => ({ label: w.label, type: w.pct ? 'pct' : w.free ? 'free' : w.points ? 'points' : 'none', value: w.pct || w.free || w.points || 0, weight: w.weight, color: w.color, ink: w.ink }));
+
 /** Estado de promociones del cliente, calculado a partir de sus envíos y su historial */
 export function computePromo(me, shipments, rewards) {
   if (!me) return null;
@@ -43,7 +64,11 @@ export function computePromo(me, shipments, rewards) {
 
   const earned = delivered.length * PROMO.pointsPerOrder + spins.reduce((a, r) => a + (r.prize?.points || 0), 0);
   const spent = spins.reduce((a, r) => a + (r.cost || 0), 0);
-  const points = Math.max(0, earned - spent);
+  const gifts = myRewards.filter((r) => r.type === 'gift');
+  const giftPoints = gifts.reduce((a, r) => a + (r.points || 0), 0);
+  const points = Math.max(0, earned + giftPoints - spent);
+  // Giros gratis regalados por el administrador
+  const freeSpins = Math.max(0, gifts.reduce((a, r) => a + (r.spins || 0), 0) - spins.filter((r) => r.free).length);
 
   // Cupones de la tarjeta de sellos (se generan solos al llegar a 6 y 10 envíos de cada ciclo)
   const coupons = [];
@@ -59,7 +84,12 @@ export function computePromo(me, shipments, rewards) {
     if (r.prize?.pct) coupons.push({ id: r.id, pct: r.prize.pct, label: `${r.prize.pct} % de descuento`, source: 'Ruleta', createdAt: r.ts });
     for (let k = 0; k < (r.prize?.free || 0); k++) coupons.push({ id: `${r.id}-${k}`, pct: 100, label: 'Envío GRATIS', source: 'Ruleta', createdAt: r.ts });
   });
-  coupons.forEach((c) => (c.expiresAt = c.createdAt + PROMO.couponDays * DAY));
+  // Cupones regalados por el administrador
+  gifts.forEach((r) => {
+    if (r.pct) coupons.push({ id: r.id, pct: r.pct, label: r.label || `${r.pct} % de descuento`, source: '🎁 Regalo', createdAt: r.ts, expiresAt: r.expiresAt });
+    for (let k = 0; k < (r.free || 0); k++) coupons.push({ id: `${r.id}-${k}`, pct: 100, label: 'Envío GRATIS', source: '🎁 Regalo', createdAt: r.ts, expiresAt: r.expiresAt });
+  });
+  coupons.forEach((c) => (c.expiresAt = c.expiresAt || c.createdAt + PROMO.couponDays * DAY));
 
   const usedIds = new Set(mine.filter((s) => s.status !== 'cancelled' && s.coupon?.id).map((s) => s.coupon.id));
   const now = Date.now();
@@ -71,7 +101,8 @@ export function computePromo(me, shipments, rewards) {
   return {
     deliveredCount: delivered.length,
     points,
-    canSpin: points >= PROMO.spinCost,
+    freeSpins,
+    canSpin: freeSpins > 0 || points >= PROMO.spinCost,
     stampsInCycle: inCycle,
     nextStamp: next,
     toNext: next.at > inCycle ? next.at - inCycle : PROMO.stampCycle - inCycle + next.at,
@@ -87,26 +118,46 @@ export function usePromo(me) {
 }
 
 /** Elige un premio según las probabilidades */
-export function pickPrize() {
-  const total = WHEEL.reduce((a, w) => a + w.weight, 0);
+export function pickPrize(wheel = WHEEL) {
+  const total = wheel.reduce((a, w) => a + w.weight, 0);
   let r = Math.random() * total;
-  for (let i = 0; i < WHEEL.length; i++) {
-    r -= WHEEL[i].weight;
+  for (let i = 0; i < wheel.length; i++) {
+    r -= wheel[i].weight;
     if (r < 0) return i;
   }
-  return WHEEL.length - 1;
+  return wheel.length - 1;
 }
 
 /** Registro del giro (queda en el historial; no se puede borrar) */
-export function spinRecord(me, index) {
-  const w = WHEEL[index];
+export function spinRecord(me, index, wheel = WHEEL, free = false) {
+  const w = wheel[index];
   return {
     id: uid('r_'),
     userId: me.id,
     userName: me.name,
     type: 'spin',
-    cost: PROMO.spinCost,
+    free,
+    cost: free ? 0 : PROMO.spinCost,
     prize: { key: w.key, label: w.label.replace('\n', ' '), pct: w.pct || 0, free: w.free || 0, points: w.points || 0 },
     ts: Date.now(),
+  };
+}
+
+/** Registro de un regalo del administrador a un cliente */
+export function giftRecord(admin, client, { pct = 0, free = 0, spins = 0, points = 0, days = PROMO.couponDays, note = '' }) {
+  return {
+    id: uid('g_'),
+    userId: client.id,
+    userName: client.name,
+    type: 'gift',
+    pct: Number(pct) || 0,
+    free: Number(free) || 0,
+    spins: Number(spins) || 0,
+    points: Number(points) || 0,
+    label: pct ? `${pct} % de descuento (regalo)` : free ? 'Envío GRATIS (regalo)' : '',
+    note,
+    by: admin.name,
+    ts: Date.now(),
+    expiresAt: Date.now() + Number(days || PROMO.couponDays) * DAY,
   };
 }

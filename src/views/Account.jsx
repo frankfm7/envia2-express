@@ -198,133 +198,152 @@ function LockSetup({ me, onDone }) {
   );
 }
 
-export function SettingsPage({ me, go }) {
+/** Opción de Configuración: botón que muestra su contenido solo al tocarlo */
+function Section({ id, icon, title, sub, open, setOpen, children, onClick, badge }) {
+  const isOpen = open === id;
+  return (
+    <div className={`set-item ${isOpen ? 'open' : ''}`}>
+      <button className="set-btn" onClick={() => (onClick ? onClick() : setOpen(isOpen ? null : id))} aria-expanded={isOpen}>
+        <span className="set-icon">{icon}</span>
+        <span className="set-text">
+          <b>{title}</b>
+          {sub && <small>{sub}</small>}
+        </span>
+        {badge && <span className="tag">{badge}</span>}
+        <span className="set-chev">{onClick ? '›' : isOpen ? '▾' : '▸'}</span>
+      </button>
+      {isOpen && !onClick && <div className="set-body">{children}</div>}
+    </div>
+  );
+}
+
+export function SettingsPage({ me, go, openId }) {
   const [, refresh] = useState(0);
+  const [open, setOpen] = useState(openId || null);
   const [perm, setPerm] = useState(typeof Notification !== 'undefined' ? Notification.permission : 'denied');
   const ds = me.driverStatus || 'none';
+  const lock = getLock(me.id);
+  const P = { open, setOpen };
   return (
     <div className="page narrow">
       <h2>⚙️ Configuración</h2>
 
       <button className="card profile-row" onClick={() => go({ name: 'profile' })}>
         <span className="row gap">
-          <Avatar me={me} size={40} />
-          <b>{me.name}</b>
-        </span>
-        <span className="muted sm">Ver perfil ›</span>
-      </button>
-
-      <button className="card profile-row" onClick={() => go({ name: 'addresses' })}>
-        <span className="row gap">
-          <span style={{ fontSize: 26 }}>📍</span>
+          <Avatar me={me} size={44} />
           <span>
-            <b>Mis direcciones</b>
-            <div className="muted sm">{(me.addresses || []).length ? `${me.addresses.length} guardada(s): ${me.addresses.map((a) => a.label).join(', ')}` : 'Casa, trabajo… para pedir con un toque'}</div>
+            <b>{me.name}</b>
+            <div className="muted sm">{me.email || me.phone}</div>
           </span>
         </span>
-        <span className="muted sm">›</span>
+        <span className="muted sm">Mi perfil ›</span>
       </button>
 
-      {allowedRoles(me).length > 1 && (
-        <div className="card">
-          <h3>Cambiar de perfil</h3>
-          <RoleSwitch me={me} go={go} />
-        </div>
-      )}
+      <div className="set-list">
+        <Section id="security" icon="🔒" title="Seguridad" sub={lock ? `Activada: ${lock.type === 'pin' ? 'código' : lock.type === 'pattern' ? 'patrón' : 'huella / Face ID'}` : 'Recomendado: protege tu app'} badge={lock ? null : 'Recomendado'} {...P}>
+          <p className="muted sm">Pide un código, patrón o huella al entrar a la app.</p>
+          <LockSetup me={me} onDone={() => refresh((x) => x + 1)} />
+        </Section>
 
-      <div className="card">
-        <h3>🔒 Seguridad</h3>
-        <p className="muted sm">Pide un código, patrón o huella para volver a entrar a la app.</p>
-        <LockSetup me={me} onDone={() => refresh((x) => x + 1)} />
-      </div>
-
-      <div className="card">
-        <h3>🔔 Notificaciones</h3>
-        {perm === 'granted' ? (
-          <p className="sm">✔ Activadas en este celular</p>
-        ) : perm === 'denied' ? (
-          <p className="sm muted">Bloqueadas: actívalas en los ajustes del navegador para este sitio.</p>
-        ) : (
-          <button className="btn" onClick={() => Notification.requestPermission().then(setPerm)}>
-            Activar avisos
-          </button>
+        {allowedRoles(me).length > 1 && (
+          <Section id="role" icon="🔁" title="Cambiar de perfil" sub="Cliente, repartidor o administrador" {...P}>
+            <RoleSwitch me={me} go={go} />
+          </Section>
         )}
-      </div>
 
-      {me.role !== 'admin' && (
-        <div className="card">
-          <h3>🛵 Trabajar como repartidor</h3>
-          {me.role === 'driver' && me.approved ? (
-            <>
-              <p className="sm">✔ Eres repartidor aprobado.</p>
-              <button className="btn" onClick={() => go({ name: 'driver-apply' })}>
-                📝 Ver / actualizar mis datos de repartidor
-              </button>
-            </>
+        <Section id="addresses" icon="📍" title="Mis direcciones" sub={(me.addresses || []).length ? `${me.addresses.length} guardada(s)` : 'Casa, trabajo… para pedir con un toque'} onClick={() => go({ name: 'addresses' })} {...P} />
+
+        <Section id="notif" icon="🔔" title="Notificaciones" sub={perm === 'granted' ? 'Activadas' : 'Desactivadas'} {...P}>
+          {perm === 'granted' ? (
+            <p className="sm">✔ Activadas en este celular</p>
+          ) : perm === 'denied' ? (
+            <p className="sm muted">Bloqueadas: actívalas en los ajustes del navegador para este sitio.</p>
           ) : (
-            <>
-              <p className="sm">
-                {ds === 'pending'
-                  ? '⏳ Tu solicitud está en revisión.'
-                  : ds === 'code_sent'
-                    ? '🔑 Te aprobaron: ingresa tu código de ingreso.'
-                    : ds === 'rejected'
-                      ? `✖ Solicitud rechazada${me.driverRejectReason ? ': ' + me.driverRejectReason : ''}. Puedes enviarla de nuevo.`
-                      : 'Llena tus datos y el administrador te dará un código de ingreso.'}
-              </p>
-              <button className="btn primary" onClick={() => go({ name: 'driver-apply' })}>
-                {ds === 'code_sent' ? 'Ingresar código' : ds === 'pending' ? 'Ver solicitud' : 'Quiero ser repartidor'}
-              </button>
-            </>
+            <button className="btn" onClick={() => Notification.requestPermission().then(setPerm)}>
+              Activar avisos
+            </button>
           )}
-        </div>
-      )}
+        </Section>
 
-      <AppearanceCard />
-      <PromoCodeCard me={me} />
-      <SupportCard me={me} />
+        <Section id="appearance" icon="🎨" title="Apariencia" sub="Tema claro u oscuro, tamaño de letra" {...P}>
+          <AppearanceCard bare />
+        </Section>
 
-      <TariffCard forDriver={me.role !== 'client'} />
+        {me.role === 'client' && (
+          <Section id="promo" icon="🏷️" title="Código promocional" sub={me.promoCode ? `Guardado: ${me.promoCode}` : 'Canjea un código de descuento'} {...P}>
+            <PromoCodeCard me={me} bare />
+          </Section>
+        )}
 
-      <details className="card">
-        <summary>
-          <b>📋 Condiciones del servicio</b>
-        </summary>
-        <ol className="sm">
-          {CONDITIONS.map(([t, d]) => (
-            <li key={t} style={{ marginBottom: 6 }}>
-              <b>{t}:</b> {d}
-            </li>
-          ))}
-        </ol>
-      </details>
+        <Section id="support" icon="💬" title="Asistencia" sub="Ayuda por WhatsApp o chat" {...P}>
+          <SupportCard bare go={go} />
+        </Section>
 
-      <div className="card">
-        <h3>📣 Recomienda la app</h3>
-        <p className="muted sm">Comparte {BUSINESS_NAME} con tus amigos y familiares.</p>
-        <button
-          className="btn"
-          onClick={() => {
-            const url = location.origin + location.pathname;
-            const text = `🛵 Te recomiendo ${BUSINESS_NAME}: envíos y mandados con rastreo en vivo. ${url}`;
-            if (navigator.share) navigator.share({ title: BUSINESS_NAME, text, url }).catch(() => {});
-            else window.open(whatsappLink('', text), '_blank');
-          }}
-        >
-          📤 Compartir
-        </button>
+        {me.role !== 'admin' && (
+          <Section id="driver" icon="🛵" title={me.role === 'driver' && me.approved ? 'Mis datos de repartidor' : 'Trabajar como repartidor'} sub={me.role === 'driver' && me.approved ? 'Ver y actualizar' : ds === 'pending' ? 'Solicitud en revisión' : ds === 'code_sent' ? 'Ingresa tu código' : 'Envía tu solicitud'} {...P}>
+            {me.role === 'driver' && me.approved ? (
+              <button className="btn" onClick={() => go({ name: 'driver-apply' })}>
+                📝 Ver / actualizar mis datos
+              </button>
+            ) : (
+              <>
+                <p className="sm">
+                  {ds === 'pending'
+                    ? '⏳ Tu solicitud está en revisión.'
+                    : ds === 'code_sent'
+                      ? '🔑 Te aprobaron: ingresa tu código de ingreso.'
+                      : ds === 'rejected'
+                        ? `✖ Solicitud rechazada${me.driverRejectReason ? ': ' + me.driverRejectReason : ''}. Puedes enviarla de nuevo.`
+                        : 'Llena tus datos y el administrador te dará un código de ingreso.'}
+                </p>
+                <button className="btn primary" onClick={() => go({ name: 'driver-apply' })}>
+                  {ds === 'code_sent' ? 'Ingresar código' : ds === 'pending' ? 'Ver solicitud' : 'Quiero ser repartidor'}
+                </button>
+              </>
+            )}
+          </Section>
+        )}
+
+        <Section id="tariff" icon="💲" title="Tarifas" sub="Precios por distancia" {...P}>
+          <TariffCard forDriver={me.role !== 'client'} open />
+        </Section>
+
+        <Section id="conditions" icon="📋" title="Condiciones del servicio" {...P}>
+          <ol className="sm">
+            {CONDITIONS.map(([t, d]) => (
+              <li key={t} style={{ marginBottom: 6 }}>
+                <b>{t}:</b> {d}
+              </li>
+            ))}
+          </ol>
+        </Section>
+
+        <Section id="share" icon="📣" title="Recomendar la app" {...P}>
+          <p className="muted sm">Comparte {BUSINESS_NAME} con tus amigos y familiares.</p>
+          <button
+            className="btn"
+            onClick={() => {
+              const url = location.origin + location.pathname;
+              const text = `🛵 Te recomiendo ${BUSINESS_NAME}: envíos y mandados con rastreo en vivo. ${url}`;
+              if (navigator.share) navigator.share({ title: BUSINESS_NAME, text, url }).catch(() => {});
+              else window.open(whatsappLink('', text), '_blank');
+            }}
+          >
+            📤 Compartir
+          </button>
+        </Section>
+
+        <Section id="about" icon="ℹ️" title="Acerca de" sub={`Versión ${APP_VERSION}`} {...P}>
+          <p className="sm">
+            {BUSINESS_NAME} · versión {APP_VERSION} · {CLOUD ? 'conectado a la nube' : 'modo demostración'}
+          </p>
+          <a className="btn ghost sm" href="./privacidad.html" target="_blank" rel="noreferrer">
+            Política de privacidad
+          </a>
+        </Section>
+
+        <Section id="logout" icon="🚪" title="Cerrar sesión" onClick={logout} {...P} />
       </div>
-
-      <div className="card">
-        <h3>ℹ️ Acerca de</h3>
-        <p className="sm">
-          {BUSINESS_NAME} · versión {APP_VERSION} · {CLOUD ? 'conectado a la nube' : 'modo demostración'}
-        </p>
-      </div>
-
-      <button className="btn ghost danger block" onClick={logout}>
-        Cerrar sesión
-      </button>
     </div>
   );
 }
@@ -424,12 +443,12 @@ export function AddressesPage({ me, go }) {
   );
 }
 
-function AppearanceCard() {
+function AppearanceCard({ bare }) {
   const [a, setA] = useState(getAppearance);
   const upd = (p) => setA(setAppearance(p));
   return (
-    <div className="card">
-      <h3>🎨 Apariencia</h3>
+    <div className={bare ? '' : 'card'}>
+      {!bare && <h3>🎨 Apariencia</h3>}
       <label className="sm muted">Tema</label>
       <div className="seg">
         {[
@@ -457,14 +476,14 @@ function AppearanceCard() {
   );
 }
 
-function PromoCodeCard({ me }) {
+function PromoCodeCard({ me, bare }) {
   const settings = useSettings();
   const [code, setCode] = useState(me.promoCode || '');
   const [msg, setMsg] = useState('');
   if (me.role !== 'client') return null;
   return (
-    <div className="card">
-      <h3>🏷️ Código promocional</h3>
+    <div className={bare ? '' : 'card'}>
+      {!bare && <h3>🏷️ Código promocional</h3>}
       <p className="muted sm">Si tienes un código de descuento, guárdalo aquí y se aplicará en tu próximo pedido.</p>
       <div className="row gap">
         <input value={code} onChange={(e) => setCode(e.target.value.toUpperCase())} placeholder="Ej. ORURO20" aria-label="Código promocional" />
@@ -485,16 +504,21 @@ function PromoCodeCard({ me }) {
   );
 }
 
-function SupportCard() {
+function SupportCard({ go }) {
   const settings = useSettings();
-  if (!settings.supportPhone) return null;
   return (
-    <div className="card">
-      <h3>💬 Asistencia por WhatsApp</h3>
+    <div>
       <p className="muted sm">¿Tienes un problema con un pedido o una duda? Escríbenos.</p>
-      <a className="btn wa block" href={whatsappLink(settings.supportPhone, `Hola ${BUSINESS_NAME}, necesito ayuda con la app.`)} target="_blank" rel="noreferrer">
-        <WhatsAppIcon /> Escribir a soporte
-      </a>
+      {go && (
+        <button className="btn primary block" onClick={() => go({ name: 'messages', id: 'support' })}>
+          💬 Chatear con soporte en la app
+        </button>
+      )}
+      {settings.supportPhone && (
+        <a className="btn wa block" style={{ marginTop: 8 }} href={whatsappLink(settings.supportPhone, `Hola ${BUSINESS_NAME}, necesito ayuda con la app.`)} target="_blank" rel="noreferrer">
+          <WhatsAppIcon /> Escribir por WhatsApp
+        </a>
+      )}
     </div>
   );
 }

@@ -94,7 +94,8 @@ service cloud.firestore {
     // Promociones: historial de puntos/cupones. Solo se agregan registros (no se borran ni editan)
     match /rewards/{id} {
       allow read: if signedIn() && (resource.data.userId == request.auth.uid || isAdmin());
-      allow create: if signedIn() && request.resource.data.userId == request.auth.uid;
+      // El cliente registra sus giros; el administrador además puede REGALAR (cupones, giros, puntos)
+      allow create: if signedIn() && (isAdmin() || (request.resource.data.userId == request.auth.uid && request.resource.data.type == 'spin'));
       allow update, delete: if isAdmin();
     }
 

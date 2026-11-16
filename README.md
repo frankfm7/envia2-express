@@ -1,4 +1,4 @@
-# 🛵 Envia2 Express — app versión 1.0.0 · entrega 4.2
+# 🛵 Envia2 Express — app versión 1.0.0 · entrega 4.3
 
 Ver el historial de versiones en [CHANGELOG.md](CHANGELOG.md).
 

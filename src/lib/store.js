@@ -90,7 +90,9 @@ export async function localLogin({ name, phone, role, vehicle, plate }) {
 }
 
 export const loginGoogle = async () => (await B()).loginGoogle();
-export const loginFacebook = async () => (await B()).loginFacebook();
+export const loginEmail = async (email, password) => (await B()).loginEmail(email, password);
+export const registerEmail = async (email, password, name) => (await B()).registerEmail(email, password, name);
+export const resetPassword = async (email) => (await B()).resetPassword(email);
 
 /** Modo nube: completar perfil después de entrar con Google */
 /** Modo nube: completar perfil después de entrar (Google o celular). Todos entran como CLIENTE;
@@ -164,6 +166,7 @@ export const deleteAddress = (me, id) => updateUser(me.id, { addresses: (me.addr
 export async function submitDriverApplication(me, app) {
   const b = await B();
   b.put('driverApps', me.id, { ...app, userId: me.id, email: me.email || '', status: 'pending', createdAt: Date.now() });
+  // (El aviso al administrador lo genera su propia app al ver la solicitud pendiente: no se duplica ni se pierde)
   b.patch('users', me.id, {
     driverStatus: 'pending',
     driverApp: { fullName: app.fullName, ci: app.ci, vehicle: app.vehicle, plate: app.plate, sentAt: Date.now() },
@@ -424,10 +427,34 @@ export async function removeDriverAccount(userId) {
 export async function updateDriverApplication(me, app) {
   const b = await B();
   b.put('driverApps', me.id, { ...app, userId: me.id, email: me.email || '', status: 'approved', updatedAt: Date.now() });
+  notifyAdmins(`✏️ ${me.name} actualizó sus datos de repartidor.`, 'driver-app');
   b.patch('users', me.id, {
     vehicle: app.vehicle,
     plate: app.plate,
     ...(app.selfieThumb && { photo: app.selfieThumb }),
     driverApp: { fullName: app.fullName, ci: app.ci, vehicle: app.vehicle, plate: app.plate, sentAt: me.driverApp?.sentAt || Date.now(), updatedAt: Date.now() },
   });
+}
+
+// ── Administradores (para avisos y chat de soporte) ─────────────────────────
+export const adminUids = () => (data.settings || []).find((x) => x.id === 'app')?.adminUids || [];
+/** Registra al administrador que entra (para que le lleguen los avisos y los chats de soporte) */
+export async function registerAdmin(me) {
+  if (me?.role !== 'admin' || adminUids().includes(me.id)) return;
+  saveSettings({ adminUids: [...adminUids(), me.id] });
+}
+/** Aviso dentro de la app a todos los administradores */
+export function notifyAdmins(text, ref = null) {
+  adminUids().forEach((a) => a !== session?.userId && notifyUser(a, ref, text));
+}
+
+// ── Chats directos (administrador ↔ repartidor / cliente, y soporte) ────────
+export const dmThread = (a, b) => 'dm:' + [a, b].sort().join('_');
+export const supportThread = (uid) => 'sup:' + uid;
+export async function sendDirect(threadId, from, participants, text, toName) {
+  const b = await B();
+  const ps = [...new Set([...participants, from.id].filter(Boolean))];
+  const id = uid('m_');
+  b.put('messages', id, { threadId, shipmentId: null, fromId: from.id, fromName: from.name, role: from.role, text, ts: Date.now(), participants: ps, toName: toName || null });
+  ps.filter((p) => p !== from.id).forEach((p) => notifyUser(p, threadId, `💬 ${from.name}: ${text}`));
 }
