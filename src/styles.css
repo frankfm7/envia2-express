@@ -767,3 +767,9 @@ main:has(.thread-page) .app-version { display: none; }
 .wait-timer.over { background: #fee2e2; color: #991b1b; border-color: #fca5a5; }
 .notif-banner { display: block; width: calc(100% - 24px); max-width: 640px; margin: 8px auto 0; padding: 10px 14px; border: 0; border-radius: 14px; background: linear-gradient(135deg, #f2c418, #f59e0b); color: #1f2937; font: inherit; font-size: 14px; text-align: left; cursor: pointer; box-shadow: var(--shadow); }
 .notif-settings .btn.block { margin-bottom: 6px; }
+/* ── 4.11 Mapa de seguimiento bloqueado + botones ── */
+.map-wrap { position: relative; }
+.map-ctrls { position: absolute; right: 10px; top: 10px; z-index: 800; display: flex; flex-direction: column; gap: 6px; }
+.map-ctrls button { width: 40px; height: 40px; border-radius: 12px; border: 1px solid #cbd5e1; background: rgb(255 255 255 / 95%); color: #0f172a; font-size: 20px; font-weight: 800; line-height: 1; cursor: pointer; box-shadow: 0 2px 8px rgb(0 0 0 / 18%); display: grid; place-items: center; }
+.map-ctrls button.on { background: #f2c418; }
+.map-locked .leaflet-container { touch-action: pan-y !important; cursor: default; }

@@ -469,6 +469,7 @@ function Job({ s, me, back, tracker }) {
             follow={active && tracker.mode === 'real'}
             radius={s.status === 'arrived' || s.status === 'in_transit' ? DELIVERY_RADIUS_M : null}
             height={440}
+            tracking
           />
           {active && (
             <div className="nav-card">

@@ -75,7 +75,7 @@ export default function PublicPage({ token }) {
 
       {!delivered && s.status !== 'cancelled' && (
         <>
-          <MapView dropoff={s.dropoff} driver={s.driverPos} route={s.route || s.tripRoute} height={340} />
+          <MapView dropoff={s.dropoff} driver={s.driverPos} route={s.route || s.tripRoute} height={340} tracking />
           <div className="eta-card">
             {s.status === 'arrived' ? (
               <b className="big">🚪 ¡Tu repartidor llegó!</b>

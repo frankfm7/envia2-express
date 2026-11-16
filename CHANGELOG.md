@@ -6,6 +6,25 @@
 
 ---
 
+## Entrega 4.11 (ZIP) — 16 nov 2026 · app versión 1.0.0 · sin cambios de reglas
+
+**La entrega no terminaba (no se podía sacar el comprobante)**
+- Causa probable: la nube rechazaba el guardado de "Entregado" y el error se perdía en silencio; la app mostraba "entregado" un momento y luego volvía atrás. Además, el aviso "Entregado" le llegaba al cliente igual (se enviaba antes de confirmar).
+- Ahora, con internet, **la foto/firma y el estado "Entregado" esperan la confirmación de la nube**; si falla, el repartidor ve **el motivo exacto** (permisos, tamaño, señal) y puede reintentar. El aviso al cliente se envía **solo después** de confirmar. Sin señal sigue funcionando como antes (se sube al volver la conexión).
+- Si la foto + firma + foto de recojo pasan el límite de 1 MB de la nube, la foto de entrega se achica sola. La copia pública del comprobante se envía sin la foto de recojo si es muy pesada.
+
+**Avisos que aparecían cada vez que se entraba a la app**
+- Causa: al abrir, los avisos viejos tardaban en cargar y la app los tomaba como nuevos (sonaban y salían como globos). Ahora solo suenan los avisos que llegan **después** de abrir la app; los anteriores quedan en la campana 🔔.
+
+**"Sincronizando cambios…"**
+- Ya no aparece: la sincronización es invisible. Solo se avisa si un cambio lleva más de 1 minuto sin poder subirse (y el aviso de "Sin señal" se mantiene).
+
+**Mapa de seguimiento (repartidor en el envío, cliente, página pública, administrador)**
+- El mapa queda **bloqueado** 🔒: al deslizar el dedo sobre el mapa **baja la pantalla** (ya no mueve el mapa). Sigue al repartidor con el GPS.
+- Botones pequeños: **＋ / －** acercar o alejar (mantiene el acercamiento y sigue al repartidor), **🎯** volver a ver todo, **🔒/🔓** permitir mover el mapa con el dedo.
+
+---
+
 ## Entrega 4.10 (ZIP) — 16 nov 2026 · app versión 1.0.0 · sin cambios de reglas · ⚙️ nueva configuración opcional (push)
 
 **Tiempo de espera del repartidor**

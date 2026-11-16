@@ -228,6 +228,7 @@ function Track({ s, me, back }) {
             route={delivered ? null : s.route || s.tripRoute}
             track={s.track}
             height={420}
+            tracking
           />
           {!delivered && !['cancelled', 'awaiting_confirmation'].includes(s.status) && (
             <div className="eta-card">

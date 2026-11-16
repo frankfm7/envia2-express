@@ -309,6 +309,30 @@ export async function updateShipment(id, patch, { status, note, pos, notify = []
   notify.filter((n) => n.to && n.to !== session?.userId).forEach((n) => notifyUser(n.to, id, n.text));
 }
 
+/** Igual que updateShipment pero ESPERA la confirmación de la nube (entregas): si falla, lanza el error real */
+export async function updateShipmentStrict(id, patch, { status, note, pos } = {}) {
+  const b = await B();
+  const sh = data.shipments.find((x) => x.id === id);
+  const fields = { ...patch, updatedAt: Date.now() };
+  const pushes = {};
+  if (status && status !== sh?.status) {
+    fields.status = status;
+    pushes.events = { status, ts: Date.now(), note: note || null, pos: pos ? { lat: pos.lat, lng: pos.lng } : null };
+  }
+  if (b.patchStrict) await b.patchStrict('shipments', id, fields, pushes);
+  else b.patch('shipments', id, fields, pushes);
+  // Avisos SOLO después de que la nube confirmó (antes el cliente recibía "Entregado" aunque no se guardara)
+  if (status && status !== sh?.status) {
+    const text = `${sh?.code}: ${STATUS[status].label}${note ? ' · ' + note : ''}`;
+    interested(sh || {}).filter((u) => u !== session?.userId).forEach((u) => notifyUser(u, id, text));
+  }
+}
+/** Fotos/firma de la entrega: espera confirmación */
+export async function saveEvidenceStrict(id, patch) {
+  const b = await B();
+  return b.mergeStrict ? b.mergeStrict('evidence', id, patch) : b.saveEvidence(id, patch);
+}
+
 /** Posición del repartidor (sin evento en el historial) */
 export async function setDriverPosition(id, pos, track) {
   (await B()).patch('shipments', id, { driverPos: pos, track });
@@ -416,6 +440,8 @@ export async function publishPublic(s, evidence) {
     updatedAt: Date.now(),
   };
   if (evidence) doc.evidence = { photo: evidence.photo || null, signature: evidence.signature || null, pickupPhoto: evidence.pickupPhoto || null };
+  // Límite de 1 MB de la nube: si se pasa, la copia pública va sin la foto de recojo (la de entrega y la firma sí)
+  if (doc.evidence && JSON.stringify(doc).length > 900 * 1024) doc.evidence.pickupPhoto = null;
   b.putPublic(s.publicToken, doc);
 }
 

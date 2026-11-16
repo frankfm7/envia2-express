@@ -94,6 +94,7 @@ function useNotifications(me, go) {
     return list;
   }, [notifications, shipments, users, messages, me]);
   const seen = useRef(null);
+  const openedAt = useRef(Date.now());
   const [toasts, setToasts] = useState([]);
 
   useEffect(() => {
@@ -102,8 +103,9 @@ function useNotifications(me, go) {
       seen.current = new Set(mine.map((n) => n.id));
       return;
     }
-    const fresh = mine.filter((n) => !seen.current.has(n.id));
-    fresh.forEach((n) => seen.current.add(n.id));
+    // Solo avisos NUEVOS de verdad: los que ya existían al abrir la app (aunque tarden en cargar) van a la campana, sin sonar
+    const fresh = mine.filter((n) => !seen.current.has(n.id) && (!n.read || n.local) && (n.ts || 0) >= openedAt.current - 15000);
+    mine.forEach((n) => seen.current.add(n.id));
     if (!fresh.length) return;
     setToasts((t) => [...t, ...fresh].slice(-4));
     // Importante = envío nuevo, cambio en tu pedido, solicitud de repartidor → tono de LLAMADA. Mensajes → pitido corto.
@@ -346,8 +348,15 @@ function Splash({ text = 'Cargando…' }) {
 
 /** Aviso de conexión: sin señal todo se guarda en el celular y se sube después */
 function SyncBanner({ sync }) {
+  // La sincronización normal es INVISIBLE. Solo se avisa si un cambio lleva más de 1 minuto sin poder subirse.
+  const [stuck, setStuck] = useState(false);
+  useEffect(() => {
+    if (!(CLOUD && sync.pending)) return setStuck(false);
+    const t = setTimeout(() => setStuck(true), 60000);
+    return () => clearTimeout(t);
+  }, [sync.pending]);
   if (!sync.online)
     return <div className="sync-banner off">📵 Sin señal — puedes seguir trabajando. Todo se guarda en el celular y se enviará al volver la conexión.</div>;
-  if (CLOUD && sync.pending) return <div className="sync-banner pending">🔄 Sincronizando cambios…</div>;
+  if (stuck) return <div className="sync-banner pending">⏳ Hay cambios que aún no se subieron. Revisa tu internet.</div>;
   return null;
 }

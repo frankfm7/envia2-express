@@ -1,4 +1,4 @@
-import { useEffect, useMemo } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { MapContainer, TileLayer, Marker, Polyline, Circle, useMap, useMapEvents } from 'react-leaflet';
 import L from 'leaflet';
 import { DEFAULT_CENTER } from '../lib/geo';
@@ -24,14 +24,17 @@ const driverIcon = (heading = 0) =>
     iconAnchor: [22, 22],
   });
 
-function FitBounds({ points, follow }) {
+function FitBounds({ points, follow, manual }) {
   const map = useMap();
   const key = points.map((p) => p && `${p.lat.toFixed(4)},${p.lng.toFixed(4)}`).join('|');
   useEffect(() => {
     const valid = points.filter(Boolean);
     if (!valid.length) return;
     try {
-      if (follow) map.panTo([follow.lat, follow.lng], { animate: true });
+      // Si la persona acercó/alejó con los botones, se respeta su zoom: solo se sigue al repartidor
+      if (manual) {
+        if (follow) map.panTo([follow.lat, follow.lng], { animate: true });
+      } else if (follow) map.panTo([follow.lat, follow.lng], { animate: true });
       else if (valid.length === 1) map.setView([valid[0].lat, valid[0].lng], 15);
       else map.fitBounds(L.latLngBounds(valid.map((p) => [p.lat, p.lng])), { padding: [40, 40], maxZoom: 16 });
     } catch {
@@ -45,8 +48,50 @@ function FitBounds({ points, follow }) {
       }
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [key, follow?.lat, follow?.lng]);
+  }, [key, follow?.lat, follow?.lng, manual]);
   return null;
+}
+
+/** Mapa de SEGUIMIENTO: bloqueado para que el dedo baje la pantalla (no mueve el mapa).
+ *  Botones: ➕ ➖ acercar/alejar · 🎯 ver todo / seguir al repartidor · 🔒/🔓 permitir mover con el dedo. */
+function LockControls({ locked, setLocked, setManual, driver }) {
+  const map = useMap();
+  useEffect(() => {
+    const hs = [map.dragging, map.touchZoom, map.scrollWheelZoom, map.doubleClickZoom, map.boxZoom, map.keyboard, map.tap].filter(Boolean);
+    hs.forEach((h) => (locked ? h.disable() : h.enable()));
+  }, [locked, map]);
+  const zoom = (d) => {
+    setManual(true);
+    try {
+      if (driver) map.setView([driver.lat, driver.lng], map.getZoom() + d);
+      else map.setZoom(map.getZoom() + d);
+    } catch {
+      /* nada */
+    }
+  };
+  const box = useRef(null);
+  useEffect(() => {
+    if (box.current) {
+      L.DomEvent.disableClickPropagation(box.current);
+      L.DomEvent.disableScrollPropagation(box.current);
+    }
+  }, []);
+  return (
+    <div className="map-ctrls" ref={box}>
+      <button type="button" aria-label="Acercar" onClick={() => zoom(1)}>
+        ＋
+      </button>
+      <button type="button" aria-label="Alejar" onClick={() => zoom(-1)}>
+        －
+      </button>
+      <button type="button" aria-label="Centrar" onClick={() => setManual(false)}>
+        🎯
+      </button>
+      <button type="button" aria-label={locked ? 'Permitir mover el mapa' : 'Bloquear el mapa'} className={locked ? '' : 'on'} onClick={() => setLocked(!locked)}>
+        {locked ? '🔒' : '🔓'}
+      </button>
+    </div>
+  );
 }
 
 function ClickHandler({ onClick }) {
@@ -70,15 +115,18 @@ function InvalidateOnResize() {
   return null;
 }
 
-export default function MapView({ pickup, dropoff, driver, drivers, person, me, route, track, onClick, follow, radius, height = 320, center }) {
+export default function MapView({ pickup, dropoff, driver, drivers, person, me, route, track, onClick, follow, radius, height = 320, center, tracking = false }) {
+  const [locked, setLocked] = useState(tracking);
+  const [manual, setManual] = useState(false);
   const fitPoints = useMemo(() => [pickup, dropoff, driver, me, person, ...(drivers || [])].filter(Boolean), [pickup, dropoff, driver, me, person, drivers]);
   const start = center || fitPoints[0] || DEFAULT_CENTER;
   return (
-    <div className="map-wrap" style={{ height }}>
+    <div className={`map-wrap ${tracking && locked ? 'map-locked' : ''}`} style={{ height }}>
       <MapContainer center={[start.lat, start.lng]} zoom={14} style={{ height: "100%", width: "100%" }} zoomControl={false} zoomAnimation={false} markerZoomAnimation={false}>
         <TileLayer attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>' url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
         <InvalidateOnResize />
-        <FitBounds points={fitPoints} follow={follow && driver ? driver : null} />
+        <FitBounds points={fitPoints} follow={(follow || (tracking && manual)) && driver ? driver : null} manual={manual} />
+        {tracking && <LockControls locked={locked} setLocked={setLocked} setManual={setManual} driver={driver} />}
         {onClick && <ClickHandler onClick={onClick} />}
         {track?.length > 1 && <Polyline positions={track} pathOptions={{ color: '#94a3b8', weight: 4, dashArray: '4 8' }} />}
         {route?.coords?.length > 1 && (

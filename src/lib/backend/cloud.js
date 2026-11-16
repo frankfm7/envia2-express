@@ -307,12 +307,12 @@ export function createCloudBackend(ctx) {
     return Promise.race([
       p.catch((e) => {
         console.warn('Firestore write', e.code || e);
-        if (e.code === 'permission-denied') throw new Error('La nube rechazó el envío (permisos). Cierra sesión, vuelve a entrar e intenta de nuevo.');
-        if (e.code === 'invalid-argument' || /size|exceeds/i.test(e.message || '')) throw new Error('Las fotos pesan demasiado. Vuelve a tomarlas e intenta de nuevo.');
+        if (e.code === 'permission-denied') throw new Error('La nube rechazó el guardado (permisos: tu cuenta no figura como repartidor aprobado o administrador en las reglas). Código: permission-denied');
+        if (e.code === 'invalid-argument' || /size|exceeds/i.test(e.message || '')) throw new Error('Los datos o fotos pesan demasiado para la nube. Código: ' + (e.code || 'size'));
         if (e.code === 'not-found') throw new Error('Tu cuenta aún se está creando. Espera unos segundos e intenta de nuevo.');
         throw new Error('No se pudo enviar: ' + (e.code || e.message || 'error de conexión'));
       }),
-      new Promise((_, rej) => setTimeout(() => rej(new Error('La señal está muy débil y no se pudo confirmar el envío. Intenta de nuevo con mejor internet.')), 30000)),
+      new Promise((_, rej) => setTimeout(() => rej(new Error('La señal está muy débil y la nube no confirmó a tiempo. Intenta de nuevo con mejor internet.')), 30000)),
     ]);
   };
 
@@ -333,8 +333,13 @@ export function createCloudBackend(ctx) {
     async putStrict(col, id, data) {
       await strict(setDoc(ref(col, id), enc({ ...data, id })));
     },
-    async patchStrict(col, id, fields) {
-      await strict(updateDoc(ref(col, id), enc(fields)));
+    async patchStrict(col, id, fields, pushes = {}) {
+      const data = enc(fields);
+      for (const [k, v] of Object.entries(pushes)) data[k] = arrayUnion(enc(v));
+      await strict(updateDoc(ref(col, id), data));
+    },
+    async mergeStrict(col, id, data) {
+      await strict(setDoc(ref(col, id), enc(data), { merge: true }));
     },
     async accept(id, fields, ev) {
       if (!navigator.onLine) throw new Error('Necesitas señal para aceptar un envío (así dos repartidores no toman la misma caja).');

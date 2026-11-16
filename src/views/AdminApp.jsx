@@ -284,7 +284,7 @@ function Dashboard({ mode = 'panel' }) {
             <Receipt shipment={sel} />
           ) : (
             <div>
-              <MapView pickup={sel.pickup} dropoff={sel.dropoff} driver={sel.driverPos} route={sel.route || sel.tripRoute} track={sel.track} height={300} />
+              <MapView pickup={sel.pickup} dropoff={sel.dropoff} driver={sel.driverPos} route={sel.route || sel.tripRoute} track={sel.track} height={300} tracking />
               <p>
                 <StatusBadge status={sel.status} /> {SIZES[sel.size]?.label} × {sel.qty} · {money(sel.price)}
               </p>

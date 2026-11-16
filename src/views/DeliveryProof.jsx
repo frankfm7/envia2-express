@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react';
 import SignaturePad from '../components/SignaturePad';
 import { PhotoInput } from '../components/Common';
-import { updateShipment, saveEvidence, useEvidence, publishPublic, getState } from '../lib/store';
+import { updateShipment, saveEvidence, saveEvidenceStrict, updateShipmentStrict, useEvidence, publishPublic, getState } from '../lib/store';
 import { distance, fmtKm, getCurrentPosition } from '../lib/geo';
-import { computeSeal, biometricAvailable, biometricConfirm } from '../lib/proof';
+import { computeSeal, biometricAvailable, biometricConfirm, compressImage } from '../lib/proof';
 import { DELIVERY_RADIUS_M, money, whatsappLink, pinMessage } from '../lib/config';
 import { waitCharge, RULES } from '../lib/tariff';
 import { WhatsAppIcon } from '../components/Common';
@@ -98,10 +98,25 @@ export default function DeliveryProof({ s, me, onDone, onCancel }) {
         ts: Date.now(),
         device: navigator.userAgent.slice(0, 120),
       };
-      const evidence = { ...(prevEv || {}), photo, signature };
+      // Límite de la nube: 1 MB por documento (foto de recojo + foto de entrega + firma). Si se pasa, se achica la foto.
+      let photo2 = photo;
+      const size = (o) => JSON.stringify(o).length;
+      for (const [max, q] of [[720, 0.55], [520, 0.5], [400, 0.45]]) {
+        if (size({ ...(prevEv || {}), photo: photo2, signature }) <= 850 * 1024) break;
+        const blob = await (await fetch(photo2)).blob();
+        photo2 = await compressImage(new File([blob], 'p.jpg', { type: 'image/jpeg' }), max, q, false);
+      }
+      const evidence = { ...(prevEv || {}), photo: photo2, signature };
       proof.hash = await computeSeal(s, proof, evidence);
-      saveEvidence(s.id, { photo, signature });
-      updateShipment(s.id, { proof, finalPrice: shippingTotal }, { status: 'delivered', note: `Recibió ${proof.receivedBy}`, pos: p });
+      // Primero la foto y la firma, luego el estado "Entregado": ambos esperan la confirmación de la nube
+      if (navigator.onLine) {
+        await saveEvidenceStrict(s.id, { photo: photo2, signature });
+        await updateShipmentStrict(s.id, { proof, finalPrice: shippingTotal }, { status: 'delivered', note: `Recibió ${proof.receivedBy}`, pos: p });
+      } else {
+        // Sin señal: queda guardado en el celular y se sube solo al volver la conexión
+        saveEvidence(s.id, { photo: photo2, signature });
+        updateShipment(s.id, { proof, finalPrice: shippingTotal }, { status: 'delivered', note: `Recibió ${proof.receivedBy}`, pos: p });
+      }
       // Copia pública para el cliente (se sube sola cuando haya señal)
       const fresh = getState().shipments.find((x) => x.id === s.id) || s;
       publishPublic({ ...fresh, status: 'delivered', proof, events: [...(fresh.events || []), { status: 'delivered', ts: Date.now() }] }, evidence);
