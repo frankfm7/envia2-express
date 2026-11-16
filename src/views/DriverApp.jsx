@@ -10,7 +10,7 @@ import DriverNewDelivery from './DriverNewDelivery';
 import Quote from './Quote';
 import HomeBanner from '../components/HomeBanner';
 import { TariffCard } from '../components/Tariff';
-import { driverEarning, computeTariff, RULES as TRULES } from '../lib/tariff';
+import { driverEarning, computeTariff, RULES as TRULES, waitCharge } from '../lib/tariff';
 import { sendReceiptLink } from '../lib/receiptImage';
 import { claimLink } from './DeliveryProof';
 import { useEta, arrivalClock } from '../lib/useEta';
@@ -117,10 +117,7 @@ function useDriverTracker(me, jobs) {
         notify: [current.clientId, current.recipientUid].filter(Boolean).map((to) => ({ to, text: `🛵 ${current.code}: tu repartidor está a menos de 1 km. ¡Prepárate para recibir!` })),
       });
     }
-    // Hora de llegada al punto de recojo (para medir el tiempo de espera)
-    if (current.status === 'accepted' && !current.pickupArrivedAt && current.pickup && distance(current.driverPos, current.pickup) < AUTO_ARRIVE_M) {
-      updateShipment(current.id, { pickupArrivedAt: Date.now() });
-    }
+    // El tiempo de espera YA NO empieza solo por GPS: el repartidor toca "Esperando paquete" / "Esperando para entregar"
     if (current.status === 'in_transit' && d < AUTO_ARRIVE_M) {
       updateShipment(current.id, {}, { status: 'arrived', note: 'Llegada detectada por GPS' });
       navigator.vibrate?.([200, 100, 200]);
@@ -182,6 +179,7 @@ function DriverHome({ me, shipments, jobs, go, tracker, section }) {
 
 function DriverHomeInner({ me, shipments, jobs, go, tracker, section = 'home' }) {
   const sync = useSync();
+  const [gpsMore, setGpsMore] = useState(false); // la simulación queda oculta en "⋮"
   const [here, setHere] = useState(null);
   const outbox = useMemo(
     () => shipments.filter((s) => s.driverId === me.id && s.status === 'delivered' && !s.receiptSent?.recipient && s.updatedAt > Date.now() - 7 * 864e5),
@@ -281,7 +279,15 @@ function DriverHomeInner({ me, shipments, jobs, go, tracker, section = 'home' })
       </div>
 
       <div className="card gps-card">
-        <b>📡 Ubicación</b>
+        <div className="row between">
+          <b>📡 Ubicación: {tracker.mode === 'sim' ? 'SIMULACIÓN' : 'GPS real'}</b>
+          <button className="btn ghost sm" aria-label="Más opciones de ubicación" onClick={() => setGpsMore((x) => !x)}>
+            ⋮
+          </button>
+        </div>
+        {tracker.mode === 'sim' && <div className="alert warn sm">⚠️ Modo simulación activo: el mapa NO usa tu GPS (el repartidor "llega" solo). Úsalo solo para pruebas.</div>}
+        {(gpsMore || tracker.mode === 'sim') && (
+        <>
         <div className="seg">
           <button className={tracker.mode === 'real' ? 'on' : ''} onClick={() => updateUser(me.id, { gpsMode: 'real' })}>
             GPS real del teléfono
@@ -299,6 +305,8 @@ function DriverHomeInner({ me, shipments, jobs, go, tracker, section = 'home' })
               </button>
             ))}
           </div>
+        )}
+        </>
         )}
         {tracker.gpsError && <div className="alert warn">{tracker.gpsError}</div>}
       </div>
@@ -485,8 +493,19 @@ function Job({ s, me, back, tracker }) {
             </div>
           )}
 
+          {s.status === 'accepted' && !s.pickupArrivedAt && (
+            <button
+              className="btn warn-btn block lg"
+              onClick={() =>
+                updateShipment(s.id, { pickupArrivedAt: Date.now() }, { notify: [{ to: s.clientId, text: `⏳ ${s.code}: tu repartidor llegó a recoger y te está esperando.` }] })
+              }
+            >
+              ⏳ Llegué · esperando el paquete
+            </button>
+          )}
+          {s.status === 'accepted' && s.pickupArrivedAt && <WaitTimer since={s.pickupArrivedAt} label="Esperando el paquete" />}
           {s.status === 'accepted' && (
-            <button className="btn primary block lg" onClick={() => setModal('pickup')}>
+            <button className={`btn ${s.pickupArrivedAt ? 'primary' : 'ghost'} block lg`} onClick={() => setModal('pickup')}>
               📦 Recogí la caja
             </button>
           )}
@@ -495,6 +514,17 @@ function Job({ s, me, back, tracker }) {
               🚪 Llegué al destino
             </button>
           )}
+          {s.status === 'arrived' && !s.dropWaitAt && (
+            <button
+              className="btn warn-btn block lg"
+              onClick={() =>
+                updateShipment(s.id, { dropWaitAt: Date.now() }, { notify: [s.clientId, s.recipientUid].filter(Boolean).map((to) => ({ to, text: `⏳ ${s.code}: el repartidor está en el punto de entrega esperando.` })) })
+              }
+            >
+              ⏳ Esperando para entregar
+            </button>
+          )}
+          {s.status === 'arrived' && s.dropWaitAt && <WaitTimer since={s.dropWaitAt} label="Esperando para entregar" />}
           {s.status === 'arrived' && (
             <button className="btn success block lg" onClick={() => setModal('deliver')}>
               ✍️ Confirmar entrega (PIN · foto · firma)
@@ -797,5 +827,27 @@ function ProblemModal({ s, onClose, back }) {
         Cancelar el envío
       </button>
     </Modal>
+  );
+}
+
+/** Cronómetro de espera: corre desde que el repartidor tocó "Esperando…" (los primeros minutos son gratis) */
+function WaitTimer({ since, label }) {
+  const [now, setNow] = useState(Date.now());
+  useEffect(() => {
+    const t = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(t);
+  }, []);
+  const sec = Math.max(0, Math.floor((now - since) / 1000));
+  const min = sec / 60;
+  const free = TRULES.freeWaitMin;
+  const charge = waitCharge(min);
+  return (
+    <div className={`wait-timer ${min > free ? 'over' : ''}`}>
+      <span>⏳ {label}</span>
+      <b>
+        {String(Math.floor(sec / 60)).padStart(2, '0')}:{String(sec % 60).padStart(2, '0')}
+      </b>
+      <small>{min <= free ? `${Math.ceil(free - min)} min gratis restantes` : `Espera con cobro: ${money(charge.amount)}`}</small>
+    </div>
   );
 }

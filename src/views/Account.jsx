@@ -14,6 +14,8 @@ import { CONDITIONS } from '../lib/tariff';
 import { useSettings } from '../lib/store';
 import { WhatsAppIcon } from '../components/Common';
 import { loadDraft, submitDraftIfAny } from './DriverApply';
+import { enablePush } from '../lib/store';
+import { getTone, setTone, TONES, playAlert, stopRing, systemNotify } from '../lib/ring';
 
 /** Foto de perfil (Google) o inicial del nombre */
 export function Avatar({ me, size = 36 }) {
@@ -386,6 +388,76 @@ function DriverSection({ me, go, ds, P }) {
   );
 }
 
+const pushOn = () => {
+  try {
+    return !!localStorage.getItem('envia2:push-token');
+  } catch {
+    return false;
+  }
+};
+/** Notificaciones: activar (con la app cerrada), elegir tono y probar */
+function NotifSettings({ me, perm, setPerm }) {
+  const [tone, setToneS] = useState(getTone());
+  const [msg, setMsg] = useState('');
+  const [busy, setBusy] = useState(false);
+  const activate = async () => {
+    setBusy(true);
+    setMsg('');
+    try {
+      if (CLOUD) await enablePush();
+      else if ('Notification' in window) await Notification.requestPermission();
+      setPerm(typeof Notification !== 'undefined' ? Notification.permission : 'denied');
+      setMsg(CLOUD ? '✅ Listo: te llegarán avisos aunque la app esté cerrada.' : '✅ Avisos activados (modo demo: solo con la app abierta).');
+    } catch (e) {
+      setPerm(typeof Notification !== 'undefined' ? Notification.permission : 'denied');
+      setMsg('✖ ' + e.message);
+    }
+    setBusy(false);
+  };
+  return (
+    <div className="notif-settings">
+      {perm === 'denied' ? (
+        <p className="sm alert warn">🔕 Bloqueadas en este celular. Ábrelas en: Chrome → ⋮ → Configuración → Configuración de sitios → Notificaciones → permite este sitio. Luego vuelve aquí.</p>
+      ) : (
+        <button className="btn primary block" disabled={busy} onClick={activate}>
+          {busy ? 'Activando…' : perm === 'granted' && pushOn() ? '🔄 Volver a registrar este celular' : '🔔 Activar notificaciones (también con la app cerrada)'}
+        </button>
+      )}
+      {msg && <div className={`alert ${msg.startsWith('✅') ? 'success' : 'error'} sm`}>{msg}</div>}
+      <div className="field" style={{ marginTop: 10 }}>
+        <label>Tono de los avisos importantes {me.role === 'driver' ? '(envío nuevo)' : me.role === 'admin' ? '(solicitudes, pedidos)' : '(tu pedido)'}</label>
+        <select
+          value={tone}
+          onChange={(e) => {
+            setTone(e.target.value);
+            setToneS(e.target.value);
+          }}
+        >
+          {Object.entries(TONES).map(([k, l]) => (
+            <option key={k} value={k}>
+              {l}
+            </option>
+          ))}
+        </select>
+      </div>
+      <div className="row gap wrap">
+        <button className="btn sm" onClick={() => playAlert(true)}>
+          ▶️ Probar tono
+        </button>
+        <button className="btn ghost sm" onClick={stopRing}>
+          ⏹ Detener
+        </button>
+        {perm === 'granted' && (
+          <button className="btn ghost sm" onClick={() => systemNotify('🔔 Prueba: así llegan los avisos importantes.', { tag: 'prueba', urgent: true })}>
+            📲 Probar aviso
+          </button>
+        )}
+      </div>
+      <p className="muted sm">Con la app abierta, los avisos importantes suenan como una llamada hasta que toques la pantalla. Con la app cerrada llegan a la barra de notificaciones con vibración larga y el sonido de notificación del celular.</p>
+    </div>
+  );
+}
+
 export function SettingsPage({ me, go, openId }) {
   const [, refresh] = useState(0);
   const [open, setOpen] = useState(openId || null);
@@ -424,16 +496,8 @@ export function SettingsPage({ me, go, openId }) {
 
         <Section id="addresses" icon="📍" title="Mis direcciones" sub={(me.addresses || []).length ? `${me.addresses.length} guardada(s)` : 'Casa, trabajo… para pedir con un toque'} onClick={() => go({ name: 'addresses' })} {...P} />
 
-        <Section id="notif" icon="🔔" title="Notificaciones" sub={perm === 'granted' ? 'Activadas' : 'Desactivadas'} {...P}>
-          {perm === 'granted' ? (
-            <p className="sm">✔ Activadas en este celular</p>
-          ) : perm === 'denied' ? (
-            <p className="sm muted">Bloqueadas: actívalas en los ajustes del navegador para este sitio.</p>
-          ) : (
-            <button className="btn" onClick={() => Notification.requestPermission().then(setPerm)}>
-              Activar avisos
-            </button>
-          )}
+        <Section id="notif" icon="🔔" title="Notificaciones" sub={perm === 'granted' ? (pushOn() ? 'Activadas (también con la app cerrada)' : 'Activadas con la app abierta') : 'Desactivadas · actívalas'} badge={perm === 'granted' && pushOn() ? null : 'Importante'} {...P}>
+          <NotifSettings me={me} perm={perm} setPerm={setPerm} />
         </Section>
 
         <Section id="appearance" icon="🎨" title="Apariencia" sub="Tema claro u oscuro, tamaño de letra" {...P}>

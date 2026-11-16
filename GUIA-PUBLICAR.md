@@ -220,9 +220,35 @@ Si sale **"Error 400: redirect_uri_mismatch"**: no es error de configuración, e
 4. **Probar gratis sin SMS reales:** en *Sign-in method → Teléfono → Números de teléfono para pruebas* agrega, por ejemplo, `+591 70000000` con el código `123456`. En la app escribe `70000000` y luego `123456`.
 5. **SMS reales:** Firebase cobra los SMS. Si al pedir el código aparece un error de facturación o de cuota, en Firebase → ⚙️ → *Uso y facturación* cambia al plan **Blaze** (pago por uso) y pon una **alerta de presupuesto** baja (ej. USD 5) para no tener sorpresas. Revisa el precio por SMS a Bolivia en la página de precios de Firebase. Si no quieres pagar SMS, deja solo **Google**: la app funciona igual.
 
+### 🔔 Notificaciones push (avisos con la app CERRADA) — desde la 4.10, gratis
+
+Sin esto, los avisos solo llegan con la app abierta. Hazlo **una vez** (son 2 claves que solo tú puedes generar):
+
+**A. Clave pública (VAPID)**
+1. Firebase → ⚙️ **Configuración del proyecto** → pestaña **Cloud Messaging**.
+2. Abajo, en **Configuración web → Certificados push web** → **Generar par de claves**.
+3. Copia la clave que aparece → Netlify → *Environment variables* → `VITE_FIREBASE_VAPID_KEY` = esa clave.
+
+**B. Cuenta de servicio (para que Netlify pueda enviar los avisos)**
+1. Firebase → ⚙️ **Configuración del proyecto** → pestaña **Cuentas de servicio** → **Generar nueva clave privada** → se descarga un archivo `.json`.
+2. Ábrelo con el Bloc de notas, **copia TODO** el contenido.
+3. Netlify → *Environment variables* → `FIREBASE_SERVICE_ACCOUNT` = pega todo el contenido. Marca la opción de **secreto** si aparece.
+   > ⚠️ Ese archivo es una llave maestra de tu Firebase: **no lo subas a GitHub ni lo mandes por chat**. Solo va en Netlify.
+4. Si en *Cloud Messaging* dice que la **API de Firebase Cloud Messaging (V1)** está inhabilitada, actívala con el enlace que muestra.
+
+**C. Publicar y activar**
+1. Netlify → *Deploys → Trigger deploy*.
+2. En **cada celular** (clientes, repartidores, administrador): Configuración → **Notificaciones** → **Activar notificaciones** → Permitir. (La app muestra un aviso amarillo arriba hasta que lo hagan.)
+3. iPhone: solo funciona con la app **instalada** (Safari → Compartir → *Agregar a inicio*) y iOS 16.4 o más nuevo.
+
+Qué avisa con la app cerrada: **envío nuevo** a repartidores conectados (urgente), cambios del pedido al cliente (aceptado, llegó, entregado…), **solicitudes de repartidor** y **mensajes de soporte** al administrador.
+Sonido: con la app **abierta**, los avisos importantes suenan como **llamada** hasta tocar la pantalla (se elige en Configuración → Notificaciones: Llamada · Corto · Silencio). Con la app **cerrada** suena el tono de notificación del celular, con **vibración larga** y el aviso **queda en pantalla** hasta tocarlo (el navegador no deja poner un tono propio).
+
 ### 🔐 Si la app pide iniciar sesión otra vez cada hora
 
-La app ya guarda la sesión en el celular. Si aun así se cierra a la hora, casi siempre es porque la **clave de API está restringida** y Firebase no puede renovar el acceso:
+La app ya guarda la sesión en el celular. Si aun así se cierra a la hora, casi siempre es porque la **clave de API está restringida** y Firebase no puede renovar el acceso.
+
+**Desde la 4.10 la app lo detecta sola:** en el Panel del administrador aparece un aviso rojo *"La sesión de todos se cerrará cada hora"* si la clave bloquea la renovación, y la pantalla de ingreso dice *"Tu sesión se cerró sola"* con el motivo. Para corregirlo:
 
 1. Entra a https://console.cloud.google.com → elige tu proyecto → **APIs y servicios → Credenciales**.
 2. Abre la clave **"Browser key (auto created by Firebase)"**.
@@ -243,6 +269,8 @@ Netlify → tu sitio → *Site configuration → Environment variables → Add a
 | `VITE_BUSINESS_NAME` | `Envia2 Express` |
 | `VITE_CURRENCY` | `Bs ` |
 | `VITE_COUNTRY_CODE` | `591` |
+| `VITE_FIREBASE_VAPID_KEY` | clave pública de notificaciones push (ver "🔔 Notificaciones push") |
+| `FIREBASE_SERVICE_ACCOUNT` | JSON de la cuenta de servicio (secreto, ver "🔔 Notificaciones push") |
 
 Luego *Deploys → Trigger deploy → Deploy site* para que tome las claves.
 

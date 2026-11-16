@@ -35,7 +35,9 @@ export default defineConfig({
         navigateFallback: 'index.html',
         // /__/auth/… y /__/firebase/… NO son de la app: los sirve Firebase a través del proxy de Netlify (_redirects).
         // Sin esto, el service worker respondía con index.html y el navegador buscaba /__/auth/assets/… → 404.
-        navigateFallbackDenylist: [/^\/__\//],
+        navigateFallbackDenylist: [/^\/__\//, /^\/\.netlify\//],
+        // Notificaciones PUSH (con la app cerrada): public/push-sw.js las muestra con vibración larga
+        importScripts: ['push-sw.js'],
         maximumFileSizeToCacheInBytes: 4 * 1024 * 1024,
         runtimeCaching: [
           {

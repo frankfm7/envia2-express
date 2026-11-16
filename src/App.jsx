@@ -14,6 +14,7 @@ import DriverApp from './views/DriverApp';
 import AdminApp from './views/AdminApp';
 import PublicPage from './views/PublicPage';
 import { fmtClock } from './lib/geo';
+import { playAlert, stopRing, systemNotify } from './lib/ring';
 
 // Enlace de consultora/destinatario: #/c/<envío>/<clave> → se guarda hasta que inicie sesión
 const CLAIM_KEY = 'boxruta:claim';
@@ -64,24 +65,9 @@ function useView() {
   return [view, go];
 }
 
-function beep() {
-  try {
-    const ctx = new (window.AudioContext || window.webkitAudioContext)();
-    const o = ctx.createOscillator();
-    const g = ctx.createGain();
-    o.connect(g);
-    g.connect(ctx.destination);
-    o.frequency.value = 880;
-    g.gain.setValueAtTime(0.15, ctx.currentTime);
-    g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.35);
-    o.start();
-    o.stop(ctx.currentTime + 0.35);
-  } catch {
-    /* sin audio */
-  }
-}
 
 /** Avisos: toast en pantalla + sonido + vibración + notificación del sistema */
+const isUrgent = (n) => !String(n.text || '').startsWith('💬') && !String(n.text || '').startsWith('✏️');
 function useNotifications(me, go) {
   const { notifications } = useStore();
   const { shipments, users, messages } = useStore();
@@ -120,15 +106,15 @@ function useNotifications(me, go) {
     fresh.forEach((n) => seen.current.add(n.id));
     if (!fresh.length) return;
     setToasts((t) => [...t, ...fresh].slice(-4));
-    beep();
-    navigator.vibrate?.(150);
-    if (document.hidden && 'Notification' in window && Notification.permission === 'granted') {
-      fresh.forEach((n) => new Notification(BUSINESS_NAME, { body: n.text, icon: './icon-192.png', tag: n.shipmentId }));
-    }
-    fresh.forEach((n) => setTimeout(() => setToasts((t) => t.filter((x) => x.id !== n.id)), 6000));
+    // Importante = envío nuevo, cambio en tu pedido, solicitud de repartidor → tono de LLAMADA. Mensajes → pitido corto.
+    const urgent = fresh.some(isUrgent);
+    playAlert(urgent);
+    if (document.hidden) fresh.forEach((n) => systemNotify(n.text, { tag: n.shipmentId || n.id, urgent: isUrgent(n) }));
+    fresh.forEach((n) => setTimeout(() => setToasts((t) => t.filter((x) => x.id !== n.id)), isUrgent(n) ? 20000 : 6000));
   }, [mine, me]);
 
   const open = (n) => {
+    stopRing();
     setToasts((t) => t.filter((x) => x.id !== n.id));
     const ref = n.shipmentId;
     if (!ref) return;
@@ -161,7 +147,14 @@ export default function App() {
   const meView = me ? { ...me, role } : null; // perfil activo (admin puede ver como repartidor o cliente)
   const { toasts, unread, all, open } = useNotifications(meView, go);
   const [bell, setBell] = useState(false);
-  const [notifPerm, setNotifPerm] = useState(typeof Notification !== 'undefined' ? Notification.permission : 'denied');
+  // ¿Este celular ya está registrado para notificaciones push?
+  const pushReady = (() => {
+    try {
+      return typeof Notification !== 'undefined' && Notification.permission === 'granted' && !!localStorage.getItem('envia2:push-token');
+    } catch {
+      return false;
+    }
+  })();
 
   // Vincular el envío del enlace a esta cuenta
   useEffect(() => {
@@ -203,6 +196,18 @@ export default function App() {
   if (view.name === 't' && view.id) return <PublicPage token={view.id} />;
   if (!sync.ready) return <Splash />;
   if (!session || session.needsProfile) return <Login session={session} claim={!!claim} />;
+  if (!me && session.loadError)
+    return (
+      <div className="splash">
+        <LogoMark size={88} />
+        <div className="muted center" style={{ maxWidth: 320 }}>
+          Tu sesión sigue abierta, pero no se pudo cargar tu cuenta ({session.loadError}). Revisa tu internet.
+        </div>
+        <button className="btn primary" onClick={() => location.reload()}>
+          Reintentar
+        </button>
+      </div>
+    );
   if (!me) return <Splash text="Cargando tu cuenta…" />;
 
   const shared = ['profile', 'settings', 'addresses', 'driver-apply', 'promos', 'messages'].includes(view.name);
@@ -256,6 +261,11 @@ export default function App() {
       </header>
 
       <SyncBanner sync={sync} />
+      {CLOUD && !pushReady && view.name !== 'settings' && (
+        <button className="notif-banner" onClick={() => go({ name: 'settings', id: 'notif' })}>
+          🔔 <b>Activa las notificaciones</b> para enterarte de tus envíos aunque la app esté cerrada ›
+        </button>
+      )}
       <main>
         {view.name === 'profile' && <ProfilePage me={me} go={go} />}
         {view.name === 'settings' && <SettingsPage me={me} go={go} openId={view.id} />}

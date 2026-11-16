@@ -32,7 +32,8 @@ export default function DeliveryProof({ s, me, onDone, onCancel }) {
   const arrivedTs = s.events?.find((e) => e.status === 'arrived')?.ts;
   const pickupTs = s.events?.find((e) => e.status === 'picked_up')?.ts;
   const [waitPickup, setWaitPickup] = useState(() => (s.pickupArrivedAt && pickupTs ? Math.max(0, Math.round((pickupTs - s.pickupArrivedAt) / 60000)) : 0));
-  const [waitDrop, setWaitDrop] = useState(() => (arrivedTs ? Math.max(0, Math.round((Date.now() - arrivedTs) / 60000)) : 0));
+  // Espera en la entrega: desde que el repartidor tocó "Esperando para entregar" (no desde que llegó)
+  const [waitDrop, setWaitDrop] = useState(() => (s.dropWaitAt ? Math.max(0, Math.round((Date.now() - s.dropWaitAt) / 60000)) : 0));
   const quotedSurcharge = (s.tariff?.lines || []).some((l) => l.label.startsWith('Recargo'));
   const [weather, setWeather] = useState(false);
   const [purchaseReal, setPurchaseReal] = useState(s.purchaseAmount || '');

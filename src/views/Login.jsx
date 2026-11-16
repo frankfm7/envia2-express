@@ -168,6 +168,22 @@ export default function Login({ session, claim }) {
   const [busy, setBusy] = useState(false);
   const [adminCode, setAdminCode] = useState('');
 
+  // ¿La sesión se cerró sola? Se muestra el motivo (para corregirlo, no solo volver a entrar)
+  const [lost, setLost] = useState(null);
+  useEffect(() => {
+    const read = () => {
+      try {
+        const t = localStorage.getItem('envia2:session-lost');
+        if (t) setLost({ t: Number(t), reason: localStorage.getItem('envia2:session-lost-reason') });
+      } catch {
+        /* sin almacenamiento */
+      }
+    };
+    read();
+    const id = setTimeout(read, 3000);
+    return () => clearTimeout(id);
+  }, []);
+
   // Error al volver de Google (inicio de sesión por redirección)
   useEffect(() => {
     const show = (code) => code && setErr(authError({ code }));
@@ -256,6 +272,14 @@ export default function Login({ session, claim }) {
 
         {CLOUD ? (
           <>
+            {lost && (
+              <div className="alert warn sm">
+                Tu sesión se cerró sola{lost.reason ? '' : '. Vuelve a entrar con la misma cuenta: tus datos siguen guardados.'}
+                {lost.reason === 'referer' && ': la clave de API de Google no permite este sitio para renovar la sesión. Avisa al administrador (guía: "Si la app pide iniciar sesión otra vez").'}
+                {lost.reason === 'token-service' && ': la clave de API de Google bloquea el servicio que renueva la sesión ("Token Service API"). Avisa al administrador (guía: "Si la app pide iniciar sesión otra vez").'}
+                {lost.reason && !['referer', 'token-service'].includes(lost.reason) && ` (motivo técnico: ${lost.reason}).`}
+              </div>
+            )}
             <button className="btn google" disabled={busy} onClick={() => run(loginGoogle)}>
               <GoogleLogo /> Continuar con Google
             </button>

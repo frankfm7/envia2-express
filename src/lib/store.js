@@ -193,6 +193,7 @@ export async function submitDriverApplication(me, app) {
   // Se espera a que la nube CONFIRME cada paso: si algo falla, la persona ve el error (antes se perdía en silencio)
   await put('driverApps', me.id, { ...app, userId: me.id, email: me.email || '', status: 'pending', createdAt: Date.now() });
   // (El aviso al administrador lo genera su propia app al ver la solicitud pendiente: no se duplica ni se pierde)
+  pushTo({ topic: 'admins', body: `🛵 Nueva solicitud de repartidor: ${app.fullName}`, tag: 'app-' + me.id, url: './#/home/drivers', urgent: true });
   await patch('users', me.id, {
     driverStatus: 'pending',
     driverApp: { fullName: app.fullName, ci: app.ci, vehicle: app.vehicle, plate: app.plate, sentAt: Date.now() },
@@ -240,7 +241,22 @@ export const ACTIVE = ['accepted', 'picked_up', 'in_transit', 'arrived'];
 export async function notifyUser(userId, shipmentId, text) {
   if (!userId) return;
   const id = uid('n_');
-  (await B()).put('notifications', id, { userId, shipmentId, text, ts: Date.now(), read: false });
+  const b = await B();
+  b.put('notifications', id, { userId, shipmentId, text, ts: Date.now(), read: false });
+  // También como PUSH al celular (llega aunque la app esté cerrada)
+  pushTo({ to: [userId], body: text, tag: shipmentId || id, url: pushUrl(shipmentId, text), urgent: !String(text).startsWith('💬') });
+}
+const pushUrl = (ref, text) => (!ref ? './' : ref.startsWith('dm:') || ref.startsWith('sup:') || String(text).startsWith('💬') ? `./#/messages/${ref}` : './');
+/** Notificación push (solo en modo nube; si no está configurada, no pasa nada) */
+export async function pushTo(payload) {
+  const b = await B();
+  b.sendPush?.(payload);
+}
+/** Activar las notificaciones con la app cerrada en este celular */
+export async function enablePush() {
+  const b = await B();
+  if (!b.enablePush) throw new Error('Disponible solo con la app publicada (modo nube).');
+  return b.enablePush();
 }
 
 const interested = (sh) => [...new Set([sh.clientId, sh.recipientUid].filter(Boolean))];
@@ -266,6 +282,7 @@ export async function createShipment(creator, d, { status = 'pending' } = {}) {
     updatedAt: Date.now(),
     ...d,
   });
+  if (status === 'pending') pushTo({ topic: 'drivers', body: `🆕 Nuevo envío disponible: ${d.dropoff?.address || ''}`.slice(0, 200), tag: 'nuevo-' + id, url: './#/orders', urgent: true });
   return id;
 }
 
@@ -302,7 +319,7 @@ export async function acceptShipment(id, driver) {
   const ev = { status: 'accepted', ts: Date.now(), note: driver.name, pos: null };
   const ok = await b.accept(
     id,
-    { status: 'accepted', driverId: driver.id, driverName: driver.name, driverPhone: driver.phone, vehicle: driver.vehicle || '', plate: driver.plate || '', updatedAt: Date.now() },
+    { status: 'accepted', driverId: driver.id, driverName: driver.name, driverPhone: driver.phone, vehicle: driver.vehicle || '', plate: driver.plate || '', pickupArrivedAt: null, dropWaitAt: null, updatedAt: Date.now() },
     ev
   );
   if (ok) {
@@ -438,6 +455,8 @@ export async function saveSettings(patch) {
 }
 
 // ── Promociones: guardar un giro de la ruleta ───────────────────────────────
+/** ¿La clave de API deja renovar la sesión? (null = bien; si no, el motivo). Solo en modo nube. */
+export const diagnoseSession = async () => (CLOUD ? (await import('./backend/cloud.js')).diagnoseApiKey() : null);
 /** ¿Las reglas de la nube reconocen al administrador? (en modo demo siempre sí) */
 export const adminRulesOk = async () => {
   const b = await B();
@@ -517,6 +536,7 @@ export async function sendDirect(threadId, from, participants, text, toName) {
   const id = uid('m_');
   b.put('messages', id, { threadId, shipmentId: null, fromId: from.id, fromName: from.name, role: from.role, text, ts: Date.now(), participants: ps, toName: toName || null });
   // Avisos: a las personas (el buzón de administración genera su propio aviso en la app del administrador)
+  if (ps.includes(ADMIN_INBOX) && from.role !== 'admin') pushTo({ topic: 'admins', body: `💬 ${from.name}: ${text}`.slice(0, 200), tag: threadId, url: `./#/messages/${threadId}` });
   ps.filter((p) => p !== from.id && p !== ADMIN_INBOX && !(threadId.startsWith('sup:') && from.role !== 'admin' && adminUids().includes(p))).forEach((p) => notifyUser(p, threadId, `💬 ${from.name}: ${text}`));
 }
 

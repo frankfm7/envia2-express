@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import MapView from '../components/MapView';
 import Receipt from '../components/Receipt';
 import { StatusBadge, Modal, Timeline, ContactBar } from '../components/Common';
-import { useStore, STATUS, ACTIVE, exportBackup, importBackup, resetAll, updateUser, CLOUD, useSettings, saveSettings, adminRulesOk } from '../lib/store';
+import { useStore, STATUS, ACTIVE, exportBackup, importBackup, resetAll, updateUser, CLOUD, useSettings, saveSettings, adminRulesOk, diagnoseSession } from '../lib/store';
 import { compressImage } from '../lib/proof';
 import CatalogBoxes from './CatalogBoxes';
 import Quote from './Quote';
@@ -21,8 +21,10 @@ export default function AdminApp({ me, view }) {
   const { users } = useStore();
   const pendingApps = users.filter((u) => u.driverStatus === 'pending').length;
   const [rulesOk, setRulesOk] = useState(true);
+  const [keyIssue, setKeyIssue] = useState(null);
   useEffect(() => {
     adminRulesOk().then(setRulesOk);
+    diagnoseSession().then(setKeyIssue);
   }, []);
   if (view?.name === 'orders') return <div className="page"><Dashboard mode="orders" /></div>;
   if (view?.name === 'history') return <div className="page"><Dashboard mode="history" /></div>;
@@ -31,6 +33,11 @@ export default function AdminApp({ me, view }) {
       {!rulesOk && (
         <div className="alert error">
           ⚠️ <b>Firebase no te reconoce como administrador.</b> Por eso no se guardan regalos, ajustes ni códigos de repartidor. En Firebase → Firestore → <b>Reglas</b>, cambia <code>tu_correo@gmail.com</code> por tu correo de administrador y toca <b>Publicar</b> (ver la guía).
+        </div>
+      )}
+      {keyIssue && (
+        <div className="alert error">
+          ⚠️ <b>La sesión de todos se cerrará cada hora.</b> La clave de API de Google {keyIssue === 'referer' ? 'no tiene autorizado este sitio' : keyIssue === 'token-service' ? 'bloquea la "Token Service API" (renovar sesión)' : `tiene un problema (${keyIssue})`}. Corrígelo en Google Cloud → Credenciales → Browser key (guía: "Si la app pide iniciar sesión otra vez cada hora").
         </div>
       )}
       <div className="tabs big scroll-x">

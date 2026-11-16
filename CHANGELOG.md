@@ -6,6 +6,25 @@
 
 ---
 
+## Entrega 4.10 (ZIP) — 16 nov 2026 · app versión 1.0.0 · sin cambios de reglas · ⚙️ nueva configuración opcional (push)
+
+**Tiempo de espera del repartidor**
+- Ya **no empieza solo por GPS**. Al llegar a recoger, el repartidor toca **"⏳ Llegué · esperando el paquete"**; al llegar al destino, **"⏳ Esperando para entregar"**. Desde ese momento corre un **cronómetro** (10 min gratis; después muestra el cobro). Al cliente le llega el aviso de que lo están esperando.
+- El cobro de espera al entregar usa esos tiempos (antes contaba desde que el GPS detectaba la llegada).
+- **Simulación** oculta en el botón **⋮** de la tarjeta "Ubicación" (no se quitó). Si queda activada, se ve un aviso naranja para no olvidarla.
+
+**Sesión que se cerraba sola**
+- Si al abrir la app no cargaba el perfil, se mostraba la pantalla de Google aunque la sesión seguía abierta. Ahora muestra "no se pudo cargar tu cuenta" con **Reintentar**.
+- Diagnóstico automático: si Firebase cierra la sesión, la pantalla de ingreso dice **"Tu sesión se cerró sola"** y el motivo; el administrador ve un aviso rojo si la **clave de API** no deja renovar la sesión (causa típica de "me saca cada hora").
+
+**Notificaciones**
+- Problema encontrado: en Android, Chrome **no permite** `new Notification()` → los avisos del sistema nunca aparecían. Ahora se muestran por el service worker, con vibración larga y quedan en pantalla (los importantes).
+- **Tono tipo llamada** para avisos importantes (envío nuevo, cambios de tu pedido, solicitudes de repartidor): se repite hasta tocar la pantalla (máx. 30 s). Mensajes: pitido corto. Se elige en Configuración → Notificaciones (Llamada · Corto · Silencio) con botón **Probar tono**.
+- **Notificaciones push con la app cerrada** (Firebase Cloud Messaging + función gratuita de Netlify `netlify/functions/push.mjs`): envío nuevo → repartidores conectados; cambios del pedido → cliente; soporte y solicitudes → administradores. Requiere 2 claves (guía: "🔔 Notificaciones push").
+- Aviso amarillo arriba para activar las notificaciones en cada celular.
+
+---
+
 ## Entrega 4.9 (ZIP) — 16 nov 2026 · app versión 1.0.0 · ⚠️ REGLAS ACTUALIZADAS (volver a pegar `firestore.rules`)
 
 **Mensajería (soporte)**

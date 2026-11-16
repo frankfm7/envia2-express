@@ -47,6 +47,34 @@ const dec = (v) => {
 };
 
 export const REDIRECT_KEY = 'envia2:auth-redirect';
+const LAST_UID = 'envia2:last-uid';
+const MANUAL_LOGOUT = 'envia2:manual-logout';
+export const SESSION_LOST = 'envia2:session-lost';
+export const SESSION_LOST_REASON = 'envia2:session-lost-reason';
+/**
+ * Diagnóstico: ¿la clave de API deja RENOVAR la sesión? (servicio "Token Service API" de Google).
+ * Se prueba con un token falso: si Google responde "token inválido" la clave está bien;
+ * si responde "bloqueado" / "referer" / "API no habilitada", la sesión se cerrará cada hora.
+ * Devuelve null si todo está bien, o el motivo.
+ */
+export async function diagnoseApiKey() {
+  try {
+    const r = await fetch(`https://securetoken.googleapis.com/v1/token?key=${encodeURIComponent(import.meta.env.VITE_FIREBASE_API_KEY || '')}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: 'grant_type=refresh_token&refresh_token=diagnostico',
+    });
+    const j = await r.json().catch(() => ({}));
+    const m = `${j?.error?.message || ''} ${j?.error?.status || ''} ${(j?.error?.details || []).map((d) => d.reason || '').join(' ')}`;
+    if (/INVALID_REFRESH_TOKEN|INVALID_GRANT_TYPE|MISSING_REFRESH_TOKEN/i.test(m)) return null;
+    if (/referer|REFERRER/i.test(m)) return 'referer';
+    if (/API_KEY_SERVICE_BLOCKED|SERVICE_DISABLED|has not been used|blocked/i.test(m)) return 'token-service';
+    if (/API key not valid|API_KEY_INVALID/i.test(m)) return 'invalid-key';
+    return r.ok ? null : 'unknown:' + (j?.error?.message || r.status);
+  } catch {
+    return null; // sin internet: no se puede saber
+  }
+}
 export const AUTH_ERROR_KEY = 'envia2:auth-error';
 const markRedirect = () => {
   try {
@@ -207,12 +235,30 @@ export function createCloudBackend(ctx) {
     stopAll();
     listenKey = '';
     if (!u) {
+      // ¿Se cerró la sesión SIN que la persona tocara "Cerrar sesión"? → se guarda para mostrar el motivo
+      try {
+        if (localStorage.getItem(LAST_UID) && !sessionStorage.getItem(MANUAL_LOGOUT)) {
+          localStorage.setItem(SESSION_LOST, String(Date.now()));
+          diagnoseApiKey().then((r) => r && localStorage.setItem(SESSION_LOST_REASON, r));
+        }
+        localStorage.removeItem(LAST_UID);
+        sessionStorage.removeItem(MANUAL_LOGOUT);
+      } catch {
+        /* sin almacenamiento */
+      }
       userUid = null;
       ctx.setSession(null);
       ctx.setData({ users: [], shipments: [], messages: [], notifications: [], settings: [], rewards: [] });
       return setSync({ ready: true });
     }
     userUid = u.uid;
+    try {
+      localStorage.setItem(LAST_UID, u.uid);
+      localStorage.removeItem(SESSION_LOST);
+      localStorage.removeItem(SESSION_LOST_REASON);
+    } catch {
+      /* sin almacenamiento */
+    }
     const base = { userId: u.uid, email: u.email, name: u.displayName, photo: u.photoURL, phone: u.phoneNumber || '', isAnonymous: u.isAnonymous, isAdminEmail: ADMIN_EMAILS.includes((u.email || '').toLowerCase()) };
     // El perfil se lee de la caché local primero (funciona sin señal).
     unsubs.push(
@@ -241,7 +287,12 @@ export function createCloudBackend(ctx) {
           setSync({ ready: true });
           startListeners(me);
         },
-        () => setSync({ ready: true })
+        (err) => {
+          // La sesión SIGUE abierta: no mostrar la pantalla de Google, sino "no se pudo cargar tu cuenta" con reintentar
+          console.warn('perfil', err.code);
+          ctx.setSession({ ...base, loadError: err.code || 'error' });
+          setSync({ ready: true });
+        }
       )
     );
   });
@@ -376,6 +427,34 @@ export function createCloudBackend(ctx) {
       if (!this._confirm) throw new Error('Primero pide el código');
       await this._confirm.confirm(code);
     },
+    /** Activa las notificaciones PUSH (con la app cerrada) en este celular y guarda su "dirección" en el perfil */
+    async enablePush() {
+      if (!env.VITE_FIREBASE_VAPID_KEY) throw new Error('Falta configurar VITE_FIREBASE_VAPID_KEY en Netlify (ver guía: "Notificaciones push").');
+      const { getMessaging, getToken, isSupported } = await import('firebase/messaging');
+      if (!(await isSupported())) throw new Error('Este navegador no permite notificaciones con la app cerrada. En iPhone: instala la app (Compartir → Agregar a inicio).');
+      const perm = await Notification.requestPermission();
+      if (perm !== 'granted') throw new Error('Permiso de notificaciones denegado. Actívalo en los ajustes del navegador para este sitio.');
+      const reg = await navigator.serviceWorker.ready;
+      const token = await getToken(getMessaging(app), { vapidKey: env.VITE_FIREBASE_VAPID_KEY, serviceWorkerRegistration: reg });
+      if (!token || !userUid) throw new Error('No se pudo registrar este celular.');
+      await updateDoc(ref('users', userUid), { pushTokens: arrayUnion(token) });
+      try {
+        localStorage.setItem('envia2:push-token', token);
+      } catch {
+        /* sin almacenamiento */
+      }
+      return token;
+    },
+    /** Envía un PUSH (función gratuita de Netlify). No bloquea ni falla la acción si no está configurado. */
+    async sendPush(payload) {
+      try {
+        if (!auth.currentUser || !navigator.onLine) return;
+        const idToken = await auth.currentUser.getIdToken();
+        await fetch('/.netlify/functions/push', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + idToken }, body: JSON.stringify(payload) });
+      } catch {
+        /* sin push: el aviso igual queda dentro de la app */
+      }
+    },
     /** ¿Las reglas de Firebase reconocen a esta cuenta como administrador? (lectura que solo el admin puede hacer) */
     async adminRulesOk() {
       if (!navigator.onLine) return true;
@@ -399,6 +478,11 @@ export function createCloudBackend(ctx) {
       }
     },
     async logout() {
+      try {
+        sessionStorage.setItem(MANUAL_LOGOUT, '1');
+      } catch {
+        /* sin almacenamiento */
+      }
       stopAll();
       await signOut(auth);
     },
