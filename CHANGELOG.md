@@ -6,6 +6,16 @@
 
 ---
 
+## Entrega 4.7 (ZIP) — 16 nov 2026 · app versión 1.0.0 · sin cambios de reglas ni de datos
+
+**Corrección urgente del login por redirección**
+- Problema: en la 4.6 el `authDomain` apuntaba al dominio de Netlify (proxy). Al iniciar sesión, el navegador buscaba `/__/auth/assets/...` en Netlify → **404** y pantalla en blanco.
+- Ahora el `authDomain` es fijo: **`envia2-express.firebaseapp.com`** (Firebase sirve ahí el `/__/auth/handler`).
+- Se **eliminó el proxy**: borrado `scripts/auth-proxy.mjs`, el paso del build (`npm run build` = solo `vite build`), ya no se crea `_redirects` para `/__/auth`, y se quitó `VITE_AUTH_PROXY`.
+- Se mantiene `signInWithRedirect` estándar del SDK (sin popups) y `getRedirectResult` al arrancar.
+
+---
+
 ## Entrega 4.6 (ZIP) — 16 nov 2026 · app versión 1.0.0 · sin cambios de reglas ni de datos
 
 **Inicio de sesión con Google por REDIRECCIÓN**

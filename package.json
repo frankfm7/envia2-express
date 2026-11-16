@@ -4,7 +4,7 @@
   "description": "Envia2 Express — app de entregas con rastreo, PIN, firma y tarifario por ruta",
   "scripts": {
     "dev": "vite --host",
-    "build": "vite build && node scripts/auth-proxy.mjs",
+    "build": "vite build",
     "preview": "vite preview --host"
   },
   "keywords": [],

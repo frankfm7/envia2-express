@@ -162,16 +162,14 @@ La app **ya trae lista la conexión a Firebase** (Google): plan gratis sin tarje
    > ⚠️ Cada vez que recibas un ZIP que diga "reglas actualizadas" en el CHANGELOG, vuelve a pegar y publicar `firestore.rules` (la 4 y la 4.1 las cambiaron).
 6. *Authentication → Settings → Dominios autorizados* → **Agregar dominio** → `envia2-express.netlify.app` (tu dominio de Netlify, sin `https://`).
 
-### 🔁 Inicio de sesión por REDIRECCIÓN (desde la 4.6)
+### 🔁 Inicio de sesión por REDIRECCIÓN (desde la 4.6, corregido en la 4.7)
 
-> **El login con Google ahora es por REDIRECT (redirección), no por ventana emergente (popup).** Al tocar *Continuar con Google* la app va a Google **en la misma pestaña**, la persona elige su cuenta y Google la **devuelve a la app ya con la sesión iniciada**. **El usuario NO tiene que habilitar ventanas emergentes** ni configurar nada en su celular: funciona en Chrome, Safari, Samsung Internet, Firefox y en la app instalada.
+> **El login con Google es por REDIRECT (redirección), no por ventana emergente (popup).** Al tocar *Continuar con Google* la app va a Google **en la misma pestaña**, la persona elige su cuenta y Google la **devuelve a la app ya con la sesión iniciada**. **El usuario NO tiene que habilitar ventanas emergentes** ni configurar nada en su celular.
 
-Lo que hace falta (**solo tú, una vez**; si ya lo hiciste en la 4.4, no hagas nada más):
-- En Google Cloud, el **URI de redireccionamiento** `https://envia2-express.netlify.app/__/auth/handler` y el **origen** `https://envia2-express.netlify.app` (pasos 2 y 3 de abajo).
-- En Firebase → Authentication → Dominios autorizados: `envia2-express.netlify.app`.
-- El "proxy de inicio de sesión" (`VITE_AUTH_PROXY`) ahora viene **activado por defecto**: ya no hace falta crear esa variable en Netlify (solo se desactiva poniéndola en `false`, no lo hagas).
-
-Si al volver de Google sale **"Error 400: redirect_uri_mismatch"**, falta el URI del paso 2. Si vuelve a la pantalla de ingreso con el aviso *"Google no devolvió la sesión"*, revisa los dominios autorizados y vuelve a publicar (*Trigger deploy*).
+- El `authDomain` de Firebase es **`envia2-express.firebaseapp.com`** (fijo en `src/lib/backend/cloud.js`). Firebase sirve ahí la página `/__/auth/handler`. **No lo cambies a netlify.app.**
+- Desde la 4.7 **ya no hay proxy en Netlify**: si en Netlify tienes la variable `VITE_AUTH_PROXY`, puedes borrarla (ya no se usa).
+- En Firebase → Authentication → **Dominios autorizados** debe estar `envia2-express.netlify.app`.
+- En Google Cloud → Credenciales → *Web client*: el URI de redireccionamiento `https://envia2-express.firebaseapp.com/__/auth/handler` (Firebase lo pone solo al crear el proyecto).
 
 ### ✅ Configuración necesaria desde la 4.4 (hazlo una vez)
 
@@ -180,12 +178,7 @@ Si al volver de Google sale **"Error 400: redirect_uri_mismatch"**, falta el URI
 - **Correo electrónico/contraseña** → Habilitar (para "Entrar con mi usuario" con alias o correo).
 - **Anónimo** → Habilitar (para "Entrar como invitado").
 
-**2. Que NO vuelva a pedir Google** (inicio de sesión por tu propio dominio):
-1. (Desde la 4.6 ya no hace falta: viene activado.) Si antes agregaste `VITE_AUTH_PROXY` = `true` en Netlify, déjalo así.
-2. Google Cloud: https://console.cloud.google.com → elige tu proyecto → **APIs y servicios → Credenciales** → en *ID de clientes de OAuth 2.0* abre **"Web client (auto created by Google Service)"** → en **URIs de redireccionamiento autorizados** → *Agregar URI* → `https://envia2-express.netlify.app/__/auth/handler` (cambia por tu dominio) → **Guardar**.
-3. En **Orígenes de JavaScript autorizados** de ese mismo cliente agrega `https://envia2-express.netlify.app`.
-4. Netlify → *Deploys → Trigger deploy*. Espera 5 minutos.
-5. En tu celular: **Cerrar sesión una vez** y vuelve a entrar con Google. Desde ahí ya no debería pedirlo.
+**2. Inicio de sesión con Google**: ver la sección "Inicio de sesión por REDIRECCIÓN" de arriba (desde la 4.7 ya no se usa el proxy de Netlify).
 
 **3. Abrir siempre en Chrome o como app instalada**: si abres el enlace **dentro de WhatsApp o Facebook**, ese navegador borra la sesión y Google no deja entrar. La app muestra un aviso con el botón "Abrir en Chrome". Lo mejor: Chrome → ⋮ → **Instalar aplicación**.
 
