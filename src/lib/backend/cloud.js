@@ -3,7 +3,7 @@
 //  - Firestore con caché sin conexión: si no hay señal, todo (firmas, fotos,
 //    estados) se guarda en el celular y se sube solo cuando vuelve internet.
 import { initializeApp } from 'firebase/app';
-import { initializeAuth, indexedDBLocalPersistence, browserLocalPersistence, browserPopupRedirectResolver, GoogleAuthProvider, signInWithEmailAndPassword, createUserWithEmailAndPassword, sendPasswordResetEmail, updateProfile, signInWithRedirect, getRedirectResult, onAuthStateChanged, signOut, RecaptchaVerifier, signInWithPhoneNumber, signInAnonymously, linkWithRedirect } from 'firebase/auth';
+import { initializeAuth, indexedDBLocalPersistence, browserLocalPersistence, browserPopupRedirectResolver, GoogleAuthProvider, signInWithEmailAndPassword, createUserWithEmailAndPassword, sendPasswordResetEmail, updateProfile, signInWithRedirect, getRedirectResult, onAuthStateChanged, signOut, RecaptchaVerifier, signInWithPhoneNumber, signInAnonymously, linkWithRedirect, connectAuthEmulator } from 'firebase/auth';
 import {
   initializeFirestore,
   persistentLocalCache,
@@ -23,6 +23,7 @@ import {
   arrayUnion,
   runTransaction,
   writeBatch,
+  connectFirestoreEmulator,
 } from 'firebase/firestore';
 
 const env = import.meta.env;
@@ -58,6 +59,7 @@ export const SESSION_LOST_REASON = 'envia2:session-lost-reason';
  * Devuelve null si todo está bien, o el motivo.
  */
 export async function diagnoseApiKey() {
+  if (import.meta.env.VITE_USE_EMULATOR === 'true') return null;
   try {
     const r = await fetch(`https://securetoken.googleapis.com/v1/token?key=${encodeURIComponent(import.meta.env.VITE_FIREBASE_API_KEY || '')}`, {
       method: 'POST',
@@ -90,7 +92,7 @@ export function createCloudBackend(ctx) {
     // Opción 3 de Firebase (redirect-best-practices): el inicio de sesión usa el MISMO dominio de la app.
     // Netlify reenvía /__/auth/* a envia2-express.firebaseapp.com (ver public/_redirects, status 200 = proxy).
     // Así Chrome/Safari no bloquean la sesión al volver de Google (particionado de almacenamiento).
-    authDomain: 'envia2-express.netlify.app',
+    authDomain: env.VITE_USE_EMULATOR === 'true' ? 'localhost' : 'envia2-express.netlify.app',
     projectId: env.VITE_FIREBASE_PROJECT_ID,
     appId: env.VITE_FIREBASE_APP_ID,
     // Necesario para notificaciones push: es el número del proyecto (viene dentro del appId "1:NÚMERO:web:…")
@@ -106,6 +108,11 @@ export function createCloudBackend(ctx) {
     localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() }),
     ignoreUndefinedProperties: true,
   });
+  // Solo para pruebas internas (VITE_USE_EMULATOR=true): usa el emulador de Firebase en la computadora
+  if (env.VITE_USE_EMULATOR === 'true') {
+    connectFirestoreEmulator(db, '127.0.0.1', 8085);
+    connectAuthEmulator(auth, 'http://127.0.0.1:9099', { disableWarnings: true });
+  }
 
   let unsubs = [];
   const sources = {}; // nombre de consulta -> { col, docs, pending }
@@ -339,6 +346,10 @@ export function createCloudBackend(ctx) {
       const data = enc(fields);
       for (const [k, v] of Object.entries(pushes)) data[k] = arrayUnion(enc(v));
       await strict(updateDoc(ref(col, id), data));
+    },
+    /** ¿Este documento tiene cambios del celular que aún no llegan a la nube? */
+    watchPending(col, id, cb) {
+      return onSnapshot(ref(col, id), { includeMetadataChanges: true }, (d) => cb({ pending: d.metadata.hasPendingWrites, fromCache: d.metadata.fromCache, status: d.data()?.status }), () => cb(null));
     },
     /** Escrituras que NO esperan (se guardan en el celular y suben solas), pero avisan si la nube las RECHAZA */
     patchTracked(col, id, fields, pushes = {}) {

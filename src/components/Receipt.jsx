@@ -42,7 +42,7 @@ export default function Receipt({ shipment: s }) {
           <div className="muted">Guía {s.code}</div>
         </div>
         <div className={`seal ${valid ? 'ok' : valid === false ? 'bad' : ''}`}>
-          {valid == null ? 'Verificando…' : valid ? '✔ Evidencia íntegra' : '⚠ Evidencia alterada'}
+          {p.closedByAdmin ? `🛠️ Cerrado por administración (${p.closedByAdmin.name})` : valid == null ? 'Verificando…' : valid ? '✔ Evidencia íntegra' : '⚠ Evidencia alterada'}
         </div>
       </div>
 

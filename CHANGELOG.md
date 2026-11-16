@@ -6,6 +6,20 @@
 
 ---
 
+## Entrega 4.13 (ZIP) — 16 nov 2026 · app versión 1.0.0 · sin cambios de reglas
+
+**Entrega que no se cerraba — revisada con el emulador oficial de Firebase**
+- Se probó la app REAL conectada a un Firestore de prueba con las reglas del proyecto: aceptar → esperar → recoger → llegar → esperar → entregar. Resultado: la entrega **queda guardada en la nube**, aparece en el **historial** del cliente y del repartidor y **suma los puntos** del cliente.
+- Lo que sí se encontró y corrigió:
+  - La ventana de entrega **tardaba hasta 8 s** esperando el GPS (parecía trabada). Ahora usa la última posición si es reciente, o espera como máximo 4 s; luego se cierra y abre el comprobante.
+  - La app instalada podía seguir usando una **versión vieja** guardada en el celular. Ahora busca la versión nueva al abrir y al volver a la app, y se recarga sola al instalarla. El pie de la app muestra **"entrega 4.13"** para saber qué versión tiene cada celular.
+- Nuevo en la pantalla del envío (repartidor): **"⏳ subiendo a la nube…"** o **"✅ Entrega guardada en la nube"**.
+- Nuevo para el administrador: en el detalle de un envío trabado, **"🛠️ Cerrar como entregado (administrador)"**; queda registrado quién lo cerró y el comprobante lo indica.
+- Si la nube rechaza la entrega por **permisos**, casi siempre es porque se entregó con la cuenta de **administrador** y su correo no está en `firestore.rules` (en la prueba, con un correo que no está en las reglas, la nube rechaza TODO).
+- Interno (solo pruebas): `VITE_USE_EMULATOR=true` conecta la app al emulador de Firebase; no se usa en Netlify.
+
+---
+
 ## Entrega 4.12 (ZIP) — 16 nov 2026 · app versión 1.0.0 · sin cambios de reglas
 
 **La entrega SIEMPRE termina (con o sin internet)**

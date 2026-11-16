@@ -5,7 +5,7 @@ import { ContactBar, StatusBadge, Modal, PhotoInput, Timeline } from '../compone
 import WhatsAppPanel from '../components/WhatsAppPanel';
 import Chat from '../components/Chat';
 import DeliveryProof from './DeliveryProof';
-import { useStore, useSync, useEvidence, getState, updateShipment, updateUser, setDriverPosition, acceptShipment, saveEvidence, publishPublic, publicLink, ACTIVE, CLOUD, recipientHasApp, senderHasApp, uploadFailure, retryDelivery } from '../lib/store';
+import { useStore, useSync, useEvidence, getState, updateShipment, updateUser, setDriverPosition, acceptShipment, saveEvidence, publishPublic, publicLink, ACTIVE, CLOUD, recipientHasApp, senderHasApp, uploadFailure, retryDelivery, useCloudPending } from '../lib/store';
 import DriverNewDelivery from './DriverNewDelivery';
 import Quote from './Quote';
 import HomeBanner from '../components/HomeBanner';
@@ -545,6 +545,7 @@ function Job({ s, me, back, tracker }) {
             </div>
           )}
           <UploadFailBanner id={s.id} />
+          {s.status === 'delivered' && <CloudSaved id={s.id} />}
           {s.status === 'delivered' && (
             <button className="btn primary block lg" onClick={() => setModal('receipt')}>
               🧾 Comprobante · enviar por WhatsApp
@@ -830,6 +831,17 @@ function ProblemModal({ s, onClose, back }) {
         Cancelar el envío
       </button>
     </Modal>
+  );
+}
+
+/** ¿La entrega ya está guardada en la nube o todavía se está subiendo? */
+function CloudSaved({ id }) {
+  const st = useCloudPending(id);
+  if (!st) return null;
+  return st.pending ? (
+    <div className="alert warn sm">⏳ Entrega guardada en este celular; subiendo a la nube… (si tarda mucho, revisa tu internet)</div>
+  ) : (
+    <div className="alert success sm">✅ Entrega guardada en la nube</div>
   );
 }
 

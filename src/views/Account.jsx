@@ -7,7 +7,7 @@ import { updateUser, logout, allowedRoles, getViewRole, setViewRole, ROLE_LABEL,
 import { getLock, setLockMethod, removeLockMethod, clearLock, lockMethods, METHOD_LABEL } from '../lib/lock';
 import { biometricAvailable, biometricConfirm, compressImage } from '../lib/proof';
 import { reverseGeocode } from '../lib/geo';
-import { APP_VERSION, BUSINESS_NAME, whatsappLink } from '../lib/config';
+import { APP_VERSION, BUILD, BUSINESS_NAME, whatsappLink } from '../lib/config';
 import { getAppearance, setAppearance } from '../lib/appearance';
 import { checkCode } from '../lib/offers';
 import { CONDITIONS } from '../lib/tariff';
@@ -543,9 +543,9 @@ export function SettingsPage({ me, go, openId }) {
           </button>
         </Section>
 
-        <Section id="about" icon="ℹ️" title="Acerca de" sub={`Versión ${APP_VERSION}`} {...P}>
+        <Section id="about" icon="ℹ️" title="Acerca de" sub={`Versión ${APP_VERSION} · entrega ${BUILD}`} {...P}>
           <p className="sm">
-            {BUSINESS_NAME} · versión {APP_VERSION} · {CLOUD ? 'conectado a la nube' : 'modo demostración'}
+            {BUSINESS_NAME} · versión {APP_VERSION} (entrega {BUILD}) · {CLOUD ? 'conectado a la nube' : 'modo demostración'}
           </p>
           <a className="btn ghost sm" href="./privacidad.html" target="_blank" rel="noreferrer">
             Política de privacidad

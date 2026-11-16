@@ -66,7 +66,9 @@ export default function DeliveryProof({ s, me, onDone, onCancel }) {
     setErr('');
     try {
       // En modo simulación usamos la posición simulada; con GPS real pedimos una lectura fresca.
-      const gps = pos?.simulated ? pos : (await getCurrentPosition()) || pos;
+      // GPS: si la última posición es reciente (menos de 2 min) se usa al instante; si no, se espera como máximo 4 s
+      const recent = pos && (pos.simulated || Date.now() - (pos.ts || 0) < 120000);
+      const gps = recent ? pos : (await Promise.race([getCurrentPosition(), new Promise((r) => setTimeout(() => r(null), 4000))])) || pos;
       const p = gps ? { lat: gps.lat, lng: gps.lng, accuracy: gps.accuracy } : null;
       let driverBiometric = null;
       if (bio && useBio) driverBiometric = await biometricConfirm(me, `${s.code}|entregado|${Date.now()}`);
@@ -306,7 +308,7 @@ export default function DeliveryProof({ s, me, onDone, onCancel }) {
           </button>
         ) : (
           <button type="button" className="btn success lg" disabled={!can || busy} onClick={finish}>
-            {busy ? 'Guardando…' : '✅ Confirmar entrega'}
+            {busy ? 'Cerrando entrega…' : '✅ Confirmar entrega'}
           </button>
         )}
       </div>

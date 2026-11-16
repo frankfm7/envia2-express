@@ -3,6 +3,8 @@
 const env = import.meta.env;
 /* global __APP_VERSION__ */
 export const APP_VERSION = typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : 'dev';
+/** Número de entrega (ZIP): sirve para saber qué versión tiene cada celular */
+export const BUILD = '4.13';
 export const BUSINESS_NAME = env.VITE_BUSINESS_NAME || 'Envia2 Express';
 export const CURRENCY = env.VITE_CURRENCY || 'Bs ';
 // Código de país para WhatsApp: 591 Bolivia · 51 Perú · 57 Colombia · 593 Ecuador · 591 Bolivia · 52 México · 56 Chile

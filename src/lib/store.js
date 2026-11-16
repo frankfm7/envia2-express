@@ -365,6 +365,23 @@ export async function completeDelivery(id, { patch, note, pos, evidence }) {
   const text = `${sh?.code}: ${STATUS.delivered.label}${note ? ' · ' + note : ''}`;
   interested(sh || {}).filter((u) => u !== session?.userId).forEach((u) => notifyUser(u, id, text));
 }
+/** Estado de subida de un envío: { pending, fromCache } (solo en modo nube) */
+export function useCloudPending(id) {
+  const [st, setSt] = useState(null);
+  useEffect(() => {
+    if (!CLOUD || !id) return;
+    let off = () => {};
+    let alive = true;
+    B().then((b) => {
+      if (alive && b.watchPending) off = b.watchPending('shipments', id, setSt);
+    });
+    return () => {
+      alive = false;
+      off();
+    };
+  }, [id]);
+  return st;
+}
 /** Reintentar subir una entrega que la nube rechazó */
 export async function retryDelivery(id) {
   const f = uploadFailure(id);

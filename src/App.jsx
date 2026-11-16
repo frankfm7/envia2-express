@@ -6,7 +6,7 @@ import DriverApply, { submitDraftIfAny, loadDraft } from './views/DriverApply';
 import Promos from './views/Promos';
 import Messages from './views/Messages';
 import { INTENT_KEY } from './views/Login';
-import { BUSINESS_NAME, APP_VERSION } from './lib/config';
+import { BUSINESS_NAME, APP_VERSION, BUILD } from './lib/config';
 import { LogoMark } from './components/Logo';
 import Login from './views/Login';
 import ClientApp from './views/ClientApp';
@@ -279,7 +279,7 @@ export default function App() {
         {!shared && role === 'client' && <ClientApp me={meView} view={view} go={go} />}
         {!shared && role === 'driver' && <DriverApp me={meView} view={view} go={go} />}
         {!shared && role === 'admin' && <AdminApp me={meView} view={view} />}
-        <div className="app-version">{BUSINESS_NAME} · versión {APP_VERSION}</div>
+        <div className="app-version">{BUSINESS_NAME} · versión {APP_VERSION} · entrega {BUILD}</div>
       </main>
 
       <BottomNav view={view} go={go} unreadMsgs={unread.filter((n) => n.text?.startsWith('💬')).length} />

@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import MapView from '../components/MapView';
 import Receipt from '../components/Receipt';
 import { StatusBadge, Modal, Timeline, ContactBar } from '../components/Common';
-import { useStore, STATUS, ACTIVE, exportBackup, importBackup, resetAll, updateUser, CLOUD, useSettings, saveSettings, adminRulesOk, diagnoseSession } from '../lib/store';
+import { useStore, STATUS, ACTIVE, exportBackup, importBackup, resetAll, updateUser, CLOUD, useSettings, saveSettings, adminRulesOk, diagnoseSession, completeDelivery } from '../lib/store';
 import { compressImage } from '../lib/proof';
 import CatalogBoxes from './CatalogBoxes';
 import Quote from './Quote';
@@ -12,6 +12,45 @@ import OffersAdmin from './OffersAdmin';
 import HomeBanner from '../components/HomeBanner';
 import { fmtDate } from '../lib/geo';
 import { money, SIZES } from '../lib/config';
+
+/** Administrador: cerrar como ENTREGADO un pedido que quedó trabado (queda registrado quién lo cerró) */
+function ForceDeliver({ s, me }) {
+  const [name, setName] = useState(s.recipient?.name || '');
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState('');
+  return (
+    <details className="card">
+      <summary>
+        <b>🛠️ Cerrar como entregado (administrador)</b>
+      </summary>
+      <p className="muted sm">Úsalo solo si el repartidor ya entregó y la app no pudo cerrar el pedido. Queda registrado que lo cerró el administrador.</p>
+      <div className="field">
+        <label>¿Quién recibió?</label>
+        <input value={name} onChange={(e) => setName(e.target.value)} />
+      </div>
+      {msg && <div className={`alert ${msg.startsWith('✅') ? 'success' : 'error'} sm`}>{msg}</div>}
+      <button
+        className="btn primary block"
+        disabled={busy || name.trim().length < 2}
+        onClick={async () => {
+          setBusy(true);
+          setMsg('');
+          try {
+            const total = (Number(s.price) || 0);
+            const proof = { receivedBy: name.trim(), relation: 'Titular', pinVerified: false, signatureMode: 'admin', closedByAdmin: { id: me.id, name: me.name, ts: Date.now() }, notes: 'Cerrado por el administrador', cashCollected: s.payment === 'cash' ? total : null, charge: { agreed: total, waitTotal: 0, surcharge: 0, shipping: total, total }, ts: Date.now() };
+            await completeDelivery(s.id, { patch: { proof, finalPrice: total }, note: `Recibió ${name.trim()} (cerrado por administración)`, pos: null, evidence: {} });
+            setMsg('✅ Pedido cerrado como entregado.');
+          } catch (e) {
+            setMsg('✖ ' + (e.message || 'No se pudo cerrar'));
+          }
+          setBusy(false);
+        }}
+      >
+        {busy ? 'Cerrando…' : '✅ Cerrar como entregado'}
+      </button>
+    </details>
+  );
+}
 
 export default function AdminApp({ me, view }) {
   const [tab, setTab] = useState(view?.id === 'drivers' ? 'drivers' : 'panel');
@@ -26,8 +65,8 @@ export default function AdminApp({ me, view }) {
     adminRulesOk().then(setRulesOk);
     diagnoseSession().then(setKeyIssue);
   }, []);
-  if (view?.name === 'orders') return <div className="page"><Dashboard mode="orders" /></div>;
-  if (view?.name === 'history') return <div className="page"><Dashboard mode="history" /></div>;
+  if (view?.name === 'orders') return <div className="page"><Dashboard mode="orders" me={me} /></div>;
+  if (view?.name === 'history') return <div className="page"><Dashboard mode="history" me={me} /></div>;
   return (
     <div className="page">
       {!rulesOk && (
@@ -63,7 +102,7 @@ export default function AdminApp({ me, view }) {
       {tab === 'panel' && (
         <>
           <HomeBanner role="admin" />
-          <Dashboard mode="panel" />
+          <Dashboard mode="panel" me={me} />
         </>
       )}
       {tab === 'drivers' && <DriverAdmin />}
@@ -75,7 +114,7 @@ export default function AdminApp({ me, view }) {
   );
 }
 
-function Dashboard({ mode = 'panel' }) {
+function Dashboard({ mode = "panel", me }) {
   const { shipments, users } = useStore();
   const [q, setQ] = useState('');
   const [status, setStatus] = useState(mode === 'history' ? 'done' : mode === 'orders' ? 'open' : 'all');
@@ -290,6 +329,7 @@ function Dashboard({ mode = 'panel' }) {
               </p>
               {sel.incident && <div className="alert warn">Incidencia: {sel.incident.reason}</div>}
               <Timeline shipment={sel} />
+              {['accepted', 'picked_up', 'in_transit', 'arrived'].includes(sel.status) && <ForceDeliver s={sel} me={me} />}
             </div>
           )}
         </Modal>
