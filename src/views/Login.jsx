@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { localLogin, loginGoogle, loginEmail, registerEmail, resetPassword, loginGuest, saveProfile, logout, takePendingAlias, cleanAlias, CLOUD } from '../lib/store';
 import { APP_VERSION, BUSINESS_NAME } from '../lib/config';
 import AnimatedLogo from '../components/AnimatedLogo';
@@ -36,6 +36,9 @@ const authError = (e) => {
   if (c === 'auth/too-many-requests') return 'Demasiados intentos. Espera unos minutos.';
   if (c === 'auth/operation-not-allowed') return 'El ingreso por celular no está activado en Firebase (ver la guía).';
   if (c === 'auth/billing-not-enabled' || c === 'auth/quota-exceeded') return 'Firebase no puede enviar más SMS hoy (límite del plan). Entra con Google.';
+  if (c === 'auth/redirect-lost') return 'Google no devolvió la sesión. Intenta de nuevo; si se repite, avisa al administrador (revisar "Inicio de sesión por redirección" en la guía).';
+  if (c === 'auth/web-storage-unsupported') return 'Este navegador bloquea el almacenamiento. Abre la app en Chrome o Safari.';
+  if (c === 'auth/network-request-failed') return 'Sin conexión. Revisa tu internet e intenta de nuevo.';
   if (c === 'auth/unauthorized-domain') return 'Este dominio no está autorizado en Firebase (ver la guía).';
   if (c === 'auth/account-exists-with-different-credential') return 'Ese correo ya entró antes con Google. Usa "Continuar con Google".';
   if (c === 'auth/operation-not-allowed') return 'Ese método de ingreso no está activado en Firebase (ver la guía).';
@@ -164,6 +167,27 @@ export default function Login({ session, claim }) {
   const [err, setErr] = useState('');
   const [busy, setBusy] = useState(false);
   const [adminCode, setAdminCode] = useState('');
+
+  // Error al volver de Google (inicio de sesión por redirección)
+  useEffect(() => {
+    const show = (code) => code && setErr(authError({ code }));
+    try {
+      show(sessionStorage.getItem('envia2:auth-error'));
+      sessionStorage.removeItem('envia2:auth-error');
+    } catch {
+      /* sin almacenamiento */
+    }
+    const h = (e) => {
+      show(e.detail);
+      try {
+        sessionStorage.removeItem('envia2:auth-error');
+      } catch {
+        /* sin almacenamiento */
+      }
+    };
+    window.addEventListener('envia2:auth-error', h);
+    return () => window.removeEventListener('envia2:auth-error', h);
+  }, []);
 
   // Primera vez: completar perfil
   if (CLOUD && session?.needsProfile)

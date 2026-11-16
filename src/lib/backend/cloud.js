@@ -3,7 +3,7 @@
 //  - Firestore con caché sin conexión: si no hay señal, todo (firmas, fotos,
 //    estados) se guarda en el celular y se sube solo cuando vuelve internet.
 import { initializeApp } from 'firebase/app';
-import { initializeAuth, indexedDBLocalPersistence, browserLocalPersistence, browserPopupRedirectResolver, GoogleAuthProvider, signInWithEmailAndPassword, createUserWithEmailAndPassword, sendPasswordResetEmail, updateProfile, signInWithPopup, signInWithRedirect, getRedirectResult, onAuthStateChanged, signOut, RecaptchaVerifier, signInWithPhoneNumber, signInAnonymously, linkWithPopup, linkWithRedirect } from 'firebase/auth';
+import { initializeAuth, indexedDBLocalPersistence, browserLocalPersistence, browserPopupRedirectResolver, GoogleAuthProvider, signInWithEmailAndPassword, createUserWithEmailAndPassword, sendPasswordResetEmail, updateProfile, signInWithRedirect, getRedirectResult, onAuthStateChanged, signOut, RecaptchaVerifier, signInWithPhoneNumber, signInAnonymously, linkWithRedirect } from 'firebase/auth';
 import {
   initializeFirestore,
   persistentLocalCache,
@@ -45,11 +45,23 @@ const dec = (v) => {
   return v;
 };
 
+export const REDIRECT_KEY = 'envia2:auth-redirect';
+export const AUTH_ERROR_KEY = 'envia2:auth-error';
+const markRedirect = () => {
+  try {
+    sessionStorage.setItem(REDIRECT_KEY, String(Date.now()));
+  } catch {
+    /* sin almacenamiento */
+  }
+};
+
 export function createCloudBackend(ctx) {
   const app = initializeApp({
     apiKey: env.VITE_FIREBASE_API_KEY,
-    // Con VITE_AUTH_PROXY=true el inicio de sesión usa el dominio propio (evita que se pierda la sesión)
-    authDomain: env.VITE_AUTH_PROXY === 'true' ? location.host : env.VITE_FIREBASE_AUTH_DOMAIN,
+    // El inicio de sesión por REDIRECCIÓN pasa por el dominio propio (/__/auth/…, ver scripts/auth-proxy.mjs).
+    // Así Chrome, Safari y Firefox no pierden la sesión al volver de Google. Solo se desactiva con VITE_AUTH_PROXY=false
+    // (y en la computadora de desarrollo, localhost, donde no hay proxy).
+    authDomain: env.VITE_AUTH_PROXY !== 'false' && !/^(localhost|127\.0\.0\.1)(:|$)/.test(location.host) ? location.host : env.VITE_FIREBASE_AUTH_DOMAIN,
     projectId: env.VITE_FIREBASE_PROJECT_ID,
     appId: env.VITE_FIREBASE_APP_ID,
   });
@@ -151,7 +163,43 @@ export function createCloudBackend(ctx) {
     listen('rewards', 'rewards', me.role === 'admin' ? collection(db, 'rewards') : query(collection(db, 'rewards'), where('userId', '==', uid)));
   }
 
-  getRedirectResult(auth).catch(() => {});
+  // Al VOLVER de Google (redirección) se completa la sesión sola. Si hubo un error, la pantalla de ingreso lo muestra.
+  const authFail = (code) => {
+    try {
+      sessionStorage.setItem(AUTH_ERROR_KEY, code);
+    } catch {
+      /* sin almacenamiento */
+    }
+    window.dispatchEvent(new CustomEvent('envia2:auth-error', { detail: code }));
+  };
+  let wasRedirect = false;
+  try {
+    wasRedirect = !!sessionStorage.getItem(REDIRECT_KEY);
+    sessionStorage.removeItem(REDIRECT_KEY);
+  } catch {
+    /* sin almacenamiento */
+  }
+  getRedirectResult(auth)
+    .then(async (res) => {
+      // Volvió de Google pero el navegador no conservó la sesión (dominio de inicio de sesión mal configurado)
+      if (wasRedirect && !res && !auth.currentUser) authFail('auth/redirect-lost');
+      // Invitado que completó su cuenta con Google: se guardan correo y foto en su perfil (conserva sus pedidos)
+      if (res?.operationType === 'link' && res.user) {
+        const u = res.user;
+        const snap = await getDoc(doc(db, 'users', u.uid)).catch(() => null);
+        const cur = snap?.data() || {};
+        await updateDoc(doc(db, 'users', u.uid), {
+          isGuest: false,
+          email: u.email || '',
+          ...(u.photoURL && { photo: u.photoURL }),
+          ...(u.displayName && (!cur.name || cur.name === 'Invitado') && { name: u.displayName }),
+        }).catch((e) => console.warn('perfil invitado', e.code || e));
+      }
+    })
+    .catch((e) => {
+      console.warn('Inicio de sesión (redirección)', e.code || e);
+      authFail(e.code || e.message || 'error');
+    });
   onAuthStateChanged(auth, async (u) => {
     stopAll();
     listenKey = '';
@@ -288,14 +336,10 @@ export function createCloudBackend(ctx) {
     async upgradeGuestGoogle() {
       const provider = new GoogleAuthProvider();
       provider.setCustomParameters({ prompt: 'select_account' });
-      try {
-        await linkWithPopup(auth.currentUser, provider);
-      } catch (e) {
-        if (e.code === 'auth/popup-blocked') return linkWithRedirect(auth.currentUser, provider);
-        throw e;
-      }
-      await auth.currentUser.reload();
-      return { email: auth.currentUser.email, name: auth.currentUser.displayName, photo: auth.currentUser.photoURL };
+      markRedirect();
+      // Va a Google en la MISMA pestaña; al volver, getRedirectResult guarda el correo y la foto
+      await linkWithRedirect(auth.currentUser, provider);
+      return new Promise(() => {}); // la página se va a Google
     },
     /** Entrar con usuario (correo + contraseña) — gratis */
     async loginEmail(email, password) {
@@ -308,13 +352,11 @@ export function createCloudBackend(ctx) {
     async resetPassword(email) {
       await sendPasswordResetEmail(auth, email.trim());
     },
+    /** Google (o cualquier otro proveedor): SIEMPRE por redirección en la misma pestaña, sin ventanas emergentes */
     async loginWith(provider) {
-      try {
-        await signInWithPopup(auth, provider);
-      } catch (e) {
-        if (['auth/popup-blocked', 'auth/operation-not-supported-in-this-environment'].includes(e.code)) await signInWithRedirect(auth, provider);
-        else if (e.code !== 'auth/popup-closed-by-user' && e.code !== 'auth/cancelled-popup-request') throw e;
-      }
+      markRedirect();
+      await signInWithRedirect(auth, provider);
+      return new Promise(() => {}); // la página se va a Google y vuelve ya con la sesión
     },
     // ── Entrar con número de celular (código por SMS) ──
     async loginPhoneStart(phoneE164, buttonId) {

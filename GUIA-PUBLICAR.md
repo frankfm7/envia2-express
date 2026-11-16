@@ -162,6 +162,17 @@ La app **ya trae lista la conexión a Firebase** (Google): plan gratis sin tarje
    > ⚠️ Cada vez que recibas un ZIP que diga "reglas actualizadas" en el CHANGELOG, vuelve a pegar y publicar `firestore.rules` (la 4 y la 4.1 las cambiaron).
 6. *Authentication → Settings → Dominios autorizados* → **Agregar dominio** → `envia2-express.netlify.app` (tu dominio de Netlify, sin `https://`).
 
+### 🔁 Inicio de sesión por REDIRECCIÓN (desde la 4.6)
+
+> **El login con Google ahora es por REDIRECT (redirección), no por ventana emergente (popup).** Al tocar *Continuar con Google* la app va a Google **en la misma pestaña**, la persona elige su cuenta y Google la **devuelve a la app ya con la sesión iniciada**. **El usuario NO tiene que habilitar ventanas emergentes** ni configurar nada en su celular: funciona en Chrome, Safari, Samsung Internet, Firefox y en la app instalada.
+
+Lo que hace falta (**solo tú, una vez**; si ya lo hiciste en la 4.4, no hagas nada más):
+- En Google Cloud, el **URI de redireccionamiento** `https://envia2-express.netlify.app/__/auth/handler` y el **origen** `https://envia2-express.netlify.app` (pasos 2 y 3 de abajo).
+- En Firebase → Authentication → Dominios autorizados: `envia2-express.netlify.app`.
+- El "proxy de inicio de sesión" (`VITE_AUTH_PROXY`) ahora viene **activado por defecto**: ya no hace falta crear esa variable en Netlify (solo se desactiva poniéndola en `false`, no lo hagas).
+
+Si al volver de Google sale **"Error 400: redirect_uri_mismatch"**, falta el URI del paso 2. Si vuelve a la pantalla de ingreso con el aviso *"Google no devolvió la sesión"*, revisa los dominios autorizados y vuelve a publicar (*Trigger deploy*).
+
 ### ✅ Configuración necesaria desde la 4.4 (hazlo una vez)
 
 **1. Activar los 3 tipos de ingreso** — Firebase → **Authentication → Sign-in method**:
@@ -170,7 +181,7 @@ La app **ya trae lista la conexión a Firebase** (Google): plan gratis sin tarje
 - **Anónimo** → Habilitar (para "Entrar como invitado").
 
 **2. Que NO vuelva a pedir Google** (inicio de sesión por tu propio dominio):
-1. Netlify → tu sitio → *Site configuration → Environment variables* → agrega `VITE_AUTH_PROXY` = `true`.
+1. (Desde la 4.6 ya no hace falta: viene activado.) Si antes agregaste `VITE_AUTH_PROXY` = `true` en Netlify, déjalo así.
 2. Google Cloud: https://console.cloud.google.com → elige tu proyecto → **APIs y servicios → Credenciales** → en *ID de clientes de OAuth 2.0* abre **"Web client (auto created by Google Service)"** → en **URIs de redireccionamiento autorizados** → *Agregar URI* → `https://envia2-express.netlify.app/__/auth/handler` (cambia por tu dominio) → **Guardar**.
 3. En **Orígenes de JavaScript autorizados** de ese mismo cliente agrega `https://envia2-express.netlify.app`.
 4. Netlify → *Deploys → Trigger deploy*. Espera 5 minutos.

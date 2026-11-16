@@ -4,10 +4,10 @@
 import { writeFileSync, existsSync, readFileSync } from 'node:fs';
 
 const project = process.env.VITE_FIREBASE_PROJECT_ID;
-const on = process.env.VITE_AUTH_PROXY === 'true';
+const on = process.env.VITE_AUTH_PROXY !== 'false'; // activado por defecto: el login por redirección lo necesita
 const file = 'dist/_redirects';
 if (!project || !on) {
-  console.log('auth-proxy: desactivado (falta VITE_FIREBASE_PROJECT_ID o VITE_AUTH_PROXY=true)');
+  console.log('auth-proxy: desactivado (falta VITE_FIREBASE_PROJECT_ID o VITE_AUTH_PROXY=false)');
   process.exit(0);
 }
 const rule = `/__/auth/*  https://${project}.firebaseapp.com/__/auth/:splat  200\n/__/firebase/*  https://${project}.firebaseapp.com/__/firebase/:splat  200\n`;

@@ -24,6 +24,12 @@ const CLAIM_KEY = 'boxruta:claim';
     history.replaceState(null, '', location.pathname + location.search + '#/home');
   }
 }
+// Volviendo de Google (inicio de sesión por redirección): entra directo, sin mostrar otra vez la bienvenida
+try {
+  if (sessionStorage.getItem('envia2:auth-redirect')) sessionStorage.setItem('envia2:entered', '1');
+} catch {
+  /* sin almacenamiento */
+}
 // Al ABRIR la app (no al volver del segundo plano) siempre se empieza en la primera pantalla y luego en Inicio
 try {
   if (sessionStorage.getItem('envia2:entered') !== '1' && !/^#\/t\//.test(location.hash))

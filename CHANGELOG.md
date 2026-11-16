@@ -6,6 +6,19 @@
 
 ---
 
+## Entrega 4.6 (ZIP) — 16 nov 2026 · app versión 1.0.0 · sin cambios de reglas ni de datos
+
+**Inicio de sesión con Google por REDIRECCIÓN**
+- Problema: el login usaba ventana emergente (popup). En celulares el navegador la bloquea y la pantalla quedaba **en blanco** al elegir la cuenta.
+- Ahora **todas** las entradas con Google usan `signInWithRedirect` (y la de "invitado → completar con Google" usa `linkWithRedirect`). **No queda ningún `signInWithPopup` ni `linkWithPopup`** en el código.
+- La app va a Google en la **misma pestaña** y al volver completa la sesión sola (`getRedirectResult` al arrancar + `onAuthStateChanged`). Al volver entra directo, sin pasar otra vez por la bienvenida.
+- Si algo falla al volver, la pantalla de ingreso muestra el motivo (antes no decía nada).
+- El proxy de inicio de sesión por el propio dominio (`/__/auth/…`) queda **activado por defecto** (la redirección lo necesita en Chrome/Safari modernos).
+- Facebook: la app no tiene login con Facebook (se quitó en la 4.3); si se vuelve a poner, usará este mismo método.
+- Reglas de Firestore y estructura de datos: **sin cambios**.
+
+---
+
 ## Entrega 4.5 (ZIP) — 16 nov 2026 · app versión 1.0.0 · sin cambios de reglas
 
 **Bienvenida**
