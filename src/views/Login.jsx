@@ -1,13 +1,11 @@
 import { useState } from 'react';
-import { localLogin, loginGoogle, loginEmail, registerEmail, resetPassword, loginPhoneStart, loginPhoneConfirm, saveProfile, logout, CLOUD } from '../lib/store';
-import { APP_VERSION, WHATSAPP_COUNTRY_CODE } from '../lib/config';
-import { LogoFull } from '../components/Logo';
+import { localLogin, loginGoogle, loginEmail, registerEmail, resetPassword, loginGuest, saveProfile, logout, takePendingAlias, cleanAlias, CLOUD } from '../lib/store';
+import { APP_VERSION, BUSINESS_NAME } from '../lib/config';
+import AnimatedLogo from '../components/AnimatedLogo';
 import { ApplyForm, loadDraft, clearDraft } from './DriverApply';
 
 export const ADMIN_CODE = import.meta.env.VITE_DEMO_ADMIN_CODE || '2468'; // solo modo demo
-export const INTENT_KEY = 'envia2:intent';
-// El ingreso por SMS tiene costo en Firebase: desactivado. Ponlo en true solo si activas el plan Blaze.
-const PHONE_LOGIN = import.meta.env.VITE_PHONE_LOGIN === 'true'; // 'driver' si entró por "Soy repartidor"
+export const INTENT_KEY = 'envia2:intent'; // 'driver' si postuló como repartidor
 
 const setIntent = (v) => {
   try {
@@ -17,22 +15,9 @@ const setIntent = (v) => {
   }
 };
 
-function Hero({ claim }) {
-  return (
-    <div className="login-hero">
-      <div className="hero-logo">
-        <LogoFull size={240} />
-      </div>
-      {claim ? (
-        <p>
-          <b>¡Tu caja llegó!</b> Entra para confirmar dónde y a qué hora te la entregamos.
-        </p>
-      ) : (
-        <p>Envíos y mandados con rastreo en vivo y comprobante firmado en el celular.</p>
-      )}
-    </div>
-  );
-}
+/** ¿Se abrió dentro de WhatsApp / Facebook / Instagram? Ahí la sesión se borra y Google no deja entrar. */
+const inAppBrowser = () => /FBAN|FBAV|Instagram|WhatsApp|Line\/|; wv\)/i.test(navigator.userAgent || '');
+const chromeIntent = () => `intent://${location.host}${location.pathname}#Intent;scheme=https;package=com.android.chrome;end`;
 
 const GoogleLogo = () => (
   <svg width="20" height="20" viewBox="0 0 48 48" aria-hidden="true">
@@ -62,81 +47,15 @@ const authError = (e) => {
 };
 
 /** Entrar con número de celular: SMS con código */
-function PhoneLogin() {
-  const [phone, setPhone] = useState('');
-  const [sent, setSent] = useState(false);
-  const [code, setCode] = useState('');
-  const [busy, setBusy] = useState(false);
-  const [err, setErr] = useState('');
-  const e164 = () => {
-    const d = phone.replace(/\D/g, '');
-    return d.startsWith(WHATSAPP_COUNTRY_CODE) && d.length > 9 ? '+' + d : `+${WHATSAPP_COUNTRY_CODE}${d}`;
-  };
-  return (
-    <div className="phone-login">
-      {!sent ? (
-        <>
-          <div className="row gap">
-            <span className="prefix">+{WHATSAPP_COUNTRY_CODE}</span>
-            <input value={phone} onChange={(e) => setPhone(e.target.value)} inputMode="tel" placeholder="7 123 4567" aria-label="Número de celular" />
-          </div>
-          <button
-            id="phone-send"
-            className="btn primary block lg"
-            disabled={busy || phone.replace(/\D/g, '').length < 8}
-            onClick={async () => {
-              setBusy(true);
-              setErr('');
-              try {
-                await loginPhoneStart(e164(), 'phone-send');
-                setSent(true);
-              } catch (e) {
-                setErr(authError(e));
-              }
-              setBusy(false);
-            }}
-          >
-            {busy ? 'Enviando…' : '📱 Enviarme el código por SMS'}
-          </button>
-        </>
-      ) : (
-        <>
-          <p className="sm">
-            Escribe el código de 6 dígitos que llegó por SMS a <b>{e164()}</b>
-          </p>
-          <input className="pin-input" value={code} onChange={(e) => setCode(e.target.value.replace(/\D/g, '').slice(0, 6))} inputMode="numeric" placeholder="••••••" aria-label="Código SMS" />
-          <button
-            className="btn primary block lg"
-            disabled={busy || code.length !== 6}
-            onClick={async () => {
-              setBusy(true);
-              setErr('');
-              try {
-                await loginPhoneConfirm(code);
-              } catch (e) {
-                setErr(authError(e));
-                setBusy(false);
-              }
-            }}
-          >
-            {busy ? 'Verificando…' : 'Entrar'}
-          </button>
-          <button className="btn ghost sm" onClick={() => (setSent(false), setCode(''))}>
-            Cambiar número
-          </button>
-        </>
-      )}
-      {err && <div className="alert error sm">{err}</div>}
-    </div>
-  );
-}
 
-/** Entrar con usuario (correo + contraseña), crear cuenta o recuperar contraseña — gratis */
-function EmailLogin() {
+/** Usuario y contraseña: entrar, crear cuenta o recuperar — gratis */
+function UserPass({ onBack }) {
   const [mode, setMode] = useState('login'); // login | register | reset
-  const [email, setEmail] = useState('');
+  const [user, setUser] = useState('');
   const [pass, setPass] = useState('');
   const [name, setName] = useState('');
+  const [alias, setAlias] = useState('');
+  const [email, setEmail] = useState('');
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState('');
   const [err, setErr] = useState('');
@@ -146,151 +65,130 @@ function EmailLogin() {
     setMsg('');
     setBusy(true);
     try {
-      if (mode === 'login') await loginEmail(email, pass);
+      if (mode === 'login') await loginEmail(user, pass);
       else if (mode === 'register') {
-        if (name.trim().length < 2) throw Object.assign(new Error('Escribe tu nombre'), { code: '' });
-        await registerEmail(email, pass, name.trim());
+        if (name.trim().length < 2) throw new Error('Escribe tu nombre');
+        if (cleanAlias(alias).length < 3) throw new Error('Elige un usuario (alias) de al menos 3 letras, sin espacios');
+        await registerEmail(email, pass, name.trim(), alias);
       } else {
-        await resetPassword(email);
-        setMsg('📧 Te enviamos un correo para crear una nueva contraseña. Revisa también "Spam".');
+        if (!user.includes('@')) throw new Error('Para recuperar la contraseña escribe tu CORREO. Si te registraste solo con usuario, pide ayuda a soporte.');
+        await resetPassword(user);
+        setMsg('📧 Te enviamos un correo para crear una nueva contraseña (revisa "Spam").');
       }
     } catch (e2) {
-      setErr(e2.code ? authError(e2) : e2.message);
+      setErr(e2.code ? (e2.code === 'auth/email-already-in-use' ? 'Ese usuario o correo ya existe: elige otro o entra con "Ya tengo cuenta".' : authError(e2)) : e2.message);
     }
     setBusy(false);
   };
   return (
-    <form className="email-login" onSubmit={submit}>
-      <div className="seg">
-        <button type="button" className={mode === 'login' ? 'on' : ''} onClick={() => setMode('login')}>
-          Ya tengo usuario
-        </button>
-        <button type="button" className={mode === 'register' ? 'on' : ''} onClick={() => setMode('register')}>
-          Crear cuenta
-        </button>
-      </div>
-      {mode === 'register' && <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Tu nombre" autoComplete="name" aria-label="Nombre" />}
-      <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="tu@correo.com" autoComplete="email" aria-label="Correo" required />
-      {mode !== 'reset' && (
-        <input type="password" value={pass} onChange={(e) => setPass(e.target.value)} placeholder="Contraseña (mínimo 6)" autoComplete={mode === 'login' ? 'current-password' : 'new-password'} aria-label="Contraseña" required minLength={6} />
+    <form className="auth-panel" onSubmit={submit}>
+      <h3>{mode === 'login' ? 'Entrar con mi usuario' : mode === 'register' ? 'Crear mi cuenta' : 'Recuperar contraseña'}</h3>
+      {mode === 'register' && (
+        <>
+          <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Nombre y apellido" autoComplete="name" aria-label="Nombre" />
+          <input value={alias} onChange={(e) => setAlias(cleanAlias(e.target.value))} placeholder="Usuario / alias (ej. ana.flores)" autoComplete="username" aria-label="Alias" />
+          <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="Correo (opcional, para recuperar la contraseña)" autoComplete="email" aria-label="Correo" />
+        </>
       )}
-      <button className="btn primary block lg" disabled={busy}>
-        {busy ? 'Un momento…' : mode === 'login' ? 'Entrar' : mode === 'register' ? 'Crear mi cuenta' : 'Enviarme el correo'}
+      {mode !== 'register' && (
+        <input value={user} onChange={(e) => setUser(e.target.value)} placeholder={mode === 'reset' ? 'Tu correo' : 'Usuario (alias) o correo'} autoComplete="username" aria-label="Usuario" required />
+      )}
+      {mode !== 'reset' && <input type="password" value={pass} onChange={(e) => setPass(e.target.value)} placeholder="Contraseña (mínimo 6)" autoComplete={mode === 'login' ? 'current-password' : 'new-password'} aria-label="Contraseña" required minLength={6} />}
+      <button className="btn primary" disabled={busy}>
+        {busy ? 'Un momento…' : mode === 'login' ? 'Entrar' : mode === 'register' ? 'Crear cuenta' : 'Enviarme el correo'}
       </button>
-      {mode === 'login' && (
-        <button type="button" className="btn ghost sm" onClick={() => setMode('reset')}>
-          ¿Olvidaste tu contraseña?
-        </button>
-      )}
-      {mode === 'reset' && (
-        <button type="button" className="btn ghost sm" onClick={() => setMode('login')}>
-          ← Volver
-        </button>
-      )}
       {msg && <div className="alert success-box sm">{msg}</div>}
       {err && <div className="alert error sm">{err}</div>}
+      <div className="row between wrap">
+        {mode === 'login' ? (
+          <>
+            <button type="button" className="linkish" onClick={() => setMode('register')}>
+              ¿No tienes cuenta? Crear una
+            </button>
+            <button type="button" className="linkish" onClick={() => setMode('reset')}>
+              Olvidé mi contraseña
+            </button>
+          </>
+        ) : (
+          <button type="button" className="linkish" onClick={() => setMode('login')}>
+            ← Ya tengo cuenta
+          </button>
+        )}
+        <button type="button" className="linkish" onClick={onBack}>
+          Cerrar
+        </button>
+      </div>
     </form>
   );
 }
 
-/** Datos mínimos (solo la primera vez) */
-function ProfileForm({ initialName = '', initialPhone = '', onSubmit, submitLabel, extra, children }) {
+/** Datos mínimos la primera vez: nombre, alias y celular */
+function ProfileForm({ initialName = '', initialPhone = '', initialAlias = '', onSubmit, submitLabel, children }) {
   const [name, setName] = useState(initialName);
   const [phone, setPhone] = useState(initialPhone);
+  const [alias, setAlias] = useState(initialAlias);
   const [err, setErr] = useState('');
   const [busy, setBusy] = useState(false);
   return (
     <form
+      className="auth-panel"
       onSubmit={async (e) => {
         e.preventDefault();
         if (name.trim().length < 2) return setErr('Escribe tu nombre');
-        if (phone.replace(/\D/g, '').length < 7) return setErr('Escribe tu celular (se usa para llamadas y WhatsApp)');
+        if (phone.replace(/\D/g, '').length < 7) return setErr('Escribe tu celular (se usa para coordinar la entrega)');
         setBusy(true);
         try {
-          await onSubmit({ name: name.trim(), phone });
+          await onSubmit({ name: name.trim(), phone, alias });
         } catch (e2) {
           setErr(e2.message);
           setBusy(false);
         }
       }}
     >
-      <div className="field">
-        <label>Nombre</label>
-        <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Tu nombre" autoComplete="name" />
-      </div>
-      <div className="field">
-        <label>Celular / WhatsApp</label>
-        <input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="7 123 4567" inputMode="tel" autoComplete="tel" />
-      </div>
+      <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Nombre y apellido" autoComplete="name" aria-label="Nombre" />
+      <input value={alias} onChange={(e) => setAlias(cleanAlias(e.target.value))} placeholder="Alias (cómo te saludamos, ej. ana)" aria-label="Alias" />
+      <input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="Celular / WhatsApp (7 123 4567)" inputMode="tel" autoComplete="tel" aria-label="Celular" />
       {children}
-      {extra}
-      {err && <div className="alert error">{err}</div>}
-      <button className="btn primary block lg" disabled={busy}>
+      {err && <div className="alert error sm">{err}</div>}
+      <button className="btn primary" disabled={busy}>
         {busy ? 'Un momento…' : submitLabel}
       </button>
     </form>
   );
 }
 
-function WhoTabs({ who, setWho, demo }) {
-  const tabs = [
-    ['client', '🙋', 'Soy cliente'],
-    ['driver', '🛵', 'Soy repartidor'],
-    ...(demo ? [['admin', '📊', 'Administrador']] : []),
-  ];
-  return (
-    <div className="role-grid" style={{ gridTemplateColumns: `repeat(${tabs.length}, 1fr)` }}>
-      {tabs.map(([k, icon, label]) => (
-        <button
-          type="button"
-          key={k}
-          className={`role ${who === k ? 'sel' : ''}`}
-          onClick={() => {
-            setWho(k);
-            setIntent(k === 'driver' ? 'driver' : '');
-          }}
-        >
-          <span className="role-icon">{icon}</span>
-          <b>{label}</b>
-        </button>
-      ))}
-    </div>
-  );
-}
-
-/** Pantalla de entrada */
+/** Pantalla de ingreso (solo la primera vez o después de "Cerrar sesión") */
 export default function Login({ session, claim }) {
-  const [who, setWho] = useState(() => (loadDraft() ? 'driver' : 'client'));
-  const [method, setMethod] = useState(null); // 'phone'
-  // Repartidor: 'choose' → 'form' (solicitud) → 'confirm' (entrar para enviarla) · 'code' (ya tiene código)
-  const [stage, setStage] = useState(() => (loadDraft() ? 'confirm' : 'choose'));
+  const [panel, setPanel] = useState(null); // 'user' | 'demo' | 'admin'
+  const [stage, setStage] = useState(() => (loadDraft() ? 'confirm' : null)); // repartidor: 'form' | 'confirm'
   const [err, setErr] = useState('');
+  const [busy, setBusy] = useState(false);
   const [adminCode, setAdminCode] = useState('');
 
-  // Primera vez (nube): completar nombre y celular
+  // Primera vez: completar perfil
   if (CLOUD && session?.needsProfile)
     return (
-      <div className="login">
-        <Hero claim={claim} />
-        <div className="card login-card">
-          <h2>¡Bienvenido!</h2>
-          <p className="muted sm">Completa tus datos una sola vez{session.email ? ` (${session.email})` : ''}.</p>
-          <ProfileForm initialName={session.name || ''} initialPhone={(session.phone || '').replace(/^\+591/, '')} onSubmit={saveProfile} submitLabel={session.isAdminEmail ? 'Entrar como administrador' : 'Continuar'} />
-          <button className="btn ghost block" onClick={logout}>
+      <div className="auth">
+        <div className="auth-inner">
+          <AnimatedLogo size={150} />
+          <h1>¡Bienvenido a {BUSINESS_NAME}!</h1>
+          <p className="auth-sub">Completa tus datos una sola vez{session.email && !session.email.includes('usuarios.envia2') ? ` (${session.email})` : ''}.</p>
+          <ProfileForm initialName={session.name || ''} initialPhone={(session.phone || '').replace(/^\+591/, '')} initialAlias={takePendingAlias() || ''} onSubmit={saveProfile} submitLabel={session.isAdminEmail ? 'Entrar como administrador' : 'Continuar'} />
+          <button className="linkish" onClick={logout}>
             Usar otra cuenta
           </button>
         </div>
       </div>
     );
 
-  // Repartidor nuevo: primero la solicitud completa (antes de iniciar sesión)
-  if (who === 'driver' && stage === 'form')
+  // Repartidor nuevo: solicitud completa antes de iniciar sesión
+  if (stage === 'form')
     return (
       <div className="login-apply">
         <ApplyForm
           me={null}
           go={() => {}}
-          onBack={() => setStage('choose')}
+          onBack={() => setStage(null)}
           onDraft={() => {
             setIntent('driver');
             setStage('confirm');
@@ -299,109 +197,93 @@ export default function Login({ session, claim }) {
       </div>
     );
 
-  const driverChoose = (
-    <div className="driver-choose">
-      <div className="alert info sm">
-        🛵 <b>Repartidores:</b> primero llenas tu solicitud (carnet, fotos, vehículo, números de confianza). El administrador la revisa y te da un <b>código de ingreso</b>.
-      </div>
-      <button className="btn primary block lg" onClick={() => setStage('form')}>
-        📝 Soy nuevo: llenar mi solicitud
-      </button>
-      <button
-        className="btn block lg"
-        onClick={() => {
-          setIntent('driver');
-          setStage('code');
-        }}
-      >
-        🔑 Ya envié mi solicitud / tengo mi código
-      </button>
-    </div>
-  );
-  const driverConfirm =
-    stage === 'confirm' ? (
-      <div className="alert success-box sm">
-        ✅ <b>Tu solicitud está lista.</b> Último paso: confirma tu identidad para enviarla al administrador.
-        <button
-          className="btn ghost sm"
-          onClick={() => {
-            clearDraft();
-            setStage('choose');
-          }}
-        >
-          Borrar y empezar de nuevo
-        </button>
-      </div>
-    ) : (
-      <div className="alert info sm">🔑 Entra con la misma cuenta con la que enviaste tu solicitud. Si ya te dieron el código, podrás escribirlo.</div>
-    );
-  const showLogin = who !== 'driver' || stage === 'confirm' || stage === 'code';
+  const run = async (fn) => {
+    setErr('');
+    setBusy(true);
+    try {
+      await fn();
+    } catch (e) {
+      setErr(authError(e));
+    }
+    setBusy(false);
+  };
 
   return (
-    <div className="login">
-      <Hero claim={claim} />
-      <div className="card login-card">
-        <h2>Entrar</h2>
-        <WhoTabs who={who} setWho={setWho} demo={!CLOUD} />
-        {who === 'driver' && stage === 'choose' && driverChoose}
-        {who === 'driver' && stage !== 'choose' && driverConfirm}
-        {!showLogin ? null : CLOUD ? (
+    <div className="auth">
+      <div className="auth-inner">
+        <AnimatedLogo size={190} />
+        <h1>{claim ? '¡Tu caja llegó!' : `Bienvenido a ${BUSINESS_NAME}`}</h1>
+        <p className="auth-sub">{claim ? 'Entra para confirmar dónde y a qué hora te la entregamos.' : 'Envíos y mandados con rastreo en vivo.'}</p>
+
+        {inAppBrowser() && (
+          <div className="inapp-warn">
+            ⚠️ Estás dentro de WhatsApp/Facebook: aquí tu sesión no se guarda y Google puede no dejarte entrar.{' '}
+            {/Android/i.test(navigator.userAgent) ? <a href={chromeIntent()}>Abrir en Chrome</a> : 'Toca ••• y elige "Abrir en Safari".'}
+          </div>
+        )}
+        {stage === 'confirm' && (
+          <div className="alert success-box sm">
+            ✅ <b>Tu solicitud de repartidor está lista.</b> Entra con Google o tu usuario para enviarla.
+            <button className="linkish" onClick={() => (clearDraft(), setStage(null))}>
+              Borrar solicitud
+            </button>
+          </div>
+        )}
+
+        {CLOUD ? (
           <>
-            <button
-              className="btn block lg google"
-              onClick={async () => {
-                setErr('');
-                try {
-                  await loginGoogle();
-                } catch (e) {
-                  setErr(authError(e));
-                }
-              }}
-            >
+            <button className="btn google" disabled={busy} onClick={() => run(loginGoogle)}>
               <GoogleLogo /> Continuar con Google
             </button>
-            <div className="or">o</div>
-            {method === 'email' ? (
-              <EmailLogin />
+            {panel === 'user' ? (
+              <UserPass onBack={() => setPanel(null)} />
             ) : (
-              <button className="btn block lg user-btn" onClick={() => setMethod('email')}>
-                👤 Entrar con mi usuario (correo y contraseña)
+              <button className="btn userpass" onClick={() => setPanel('user')}>
+                👤 Entrar con mi usuario
               </button>
             )}
-            {PHONE_LOGIN &&
-              (method === 'phone' ? (
-                <PhoneLogin />
-              ) : (
-                <button className="btn block lg" onClick={() => setMethod('phone')}>
-                  📱 Entrar con mi número de celular
-                </button>
-              ))}
-            {err && <div className="alert error">{err}</div>}
-            <p className="muted sm center">Solo la primera vez necesitas internet. Después puedes trabajar sin señal.</p>
+            <div className="or">o</div>
+            <button className="linkish" disabled={busy} onClick={() => run(loginGuest)}>
+              Entrar como invitado (podrás completar tus datos después)
+            </button>
           </>
+        ) : panel === 'demo' || panel === 'admin' ? (
+          <ProfileForm
+            onSubmit={async ({ name, phone, alias }) => {
+              if (panel === 'admin' && adminCode !== ADMIN_CODE) throw new Error('Código de administrador incorrecto');
+              await localLogin({ name, phone, alias, role: panel === 'admin' ? 'admin' : 'client' });
+            }}
+            submitLabel="Entrar"
+          >
+            {panel === 'admin' && <input value={adminCode} onChange={(e) => setAdminCode(e.target.value)} type="password" inputMode="numeric" placeholder={`Código de administrador (demo: ${ADMIN_CODE})`} aria-label="Código de administrador" />}
+          </ProfileForm>
         ) : (
           <>
-            <div className="alert warn sm">
-              <b>Modo demostración:</b> los datos se guardan solo en este navegador. Para Google y celular, conecta Firebase (ver GUIA-PUBLICAR.md).
-            </div>
-            <ProfileForm
-              onSubmit={async ({ name, phone }) => {
-                if (who === 'admin' && adminCode !== ADMIN_CODE) throw new Error('Código de administrador incorrecto');
-                await localLogin({ name, phone, role: who === 'admin' ? 'admin' : 'client' });
-              }}
-              submitLabel="Continuar"
-            >
-              {who === 'admin' && (
-                <div className="field">
-                  <label>Código de administrador</label>
-                  <input value={adminCode} onChange={(e) => setAdminCode(e.target.value)} type="password" inputMode="numeric" placeholder="••••" />
-                  <span className="muted sm">Demo: {ADMIN_CODE}</span>
-                </div>
-              )}
-            </ProfileForm>
+            <div className="alert warn sm">Modo demostración: los datos quedan solo en este navegador.</div>
+            <button className="btn google" onClick={() => setPanel('demo')}>
+              👤 Entrar (demo)
+            </button>
+            <div className="or">o</div>
+            <button className="linkish" onClick={() => run(loginGuest)}>
+              Entrar como invitado
+            </button>
           </>
         )}
-        <div className="app-version">versión {APP_VERSION}</div>
+        {err && <div className="alert error sm">{err}</div>}
+
+        <div className="auth-foot">
+          <button className="linkish" onClick={() => setStage('form')}>
+            🛵 ¿Quieres ser repartidor? Postula aquí
+          </button>
+          {!CLOUD && panel !== 'admin' && (
+            <button className="linkish" onClick={() => setPanel('admin')}>
+              Administrador (demo)
+            </button>
+          )}
+          <span>
+            Al continuar aceptas las <a href="./privacidad.html" target="_blank" rel="noreferrer" className="linkish">políticas de privacidad</a> · versión {APP_VERSION}
+          </span>
+        </div>
       </div>
     </div>
   );

@@ -95,6 +95,14 @@ export function createLocalBackend(ctx) {
       this.patch('shipments', id, fields, { events: ev });
       return true;
     },
+    async loginGuest() {
+      const id = 'u_guest_' + Date.now().toString(36);
+      this.put('users', id, { name: 'Invitado', phone: '', role: 'client', isGuest: true, online: false, approved: true, driverStatus: 'none', addresses: [], createdAt: Date.now() });
+      this.localLogin(id);
+    },
+    async upgradeGuestGoogle() {
+      return {};
+    },
     async getOne(col, id) {
       return data[col]?.find((x) => x.id === id) || null;
     },

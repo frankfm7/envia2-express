@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
-import { getLock, checkSecret, unlockWithBiometric, markActive, lastActive, LOCK_AFTER_MS, clearLock } from '../lib/lock';
+import { getLock, checkSecret, unlockWithBiometric, markActive, clearLock, lockMethods, primaryMethod } from '../lib/lock';
+import AnimatedLogo, { greeting } from './AnimatedLogo';
 import { logout } from '../lib/store';
 import { LogoMark } from './Logo';
 
@@ -117,19 +118,23 @@ const entered = () => {
     return false;
   }
 };
+function WelcomePhoto({ me }) {
+  const [bad, setBad] = useState(false);
+  if (me.photo && !bad) return <img className="lock-avatar" src={me.photo} alt="" referrerPolicy="no-referrer" onError={() => setBad(true)} />;
+  return <div className="lock-avatar initial">{(displayName(me) || '?').charAt(0).toUpperCase()}</div>;
+}
+export const displayName = (me) => (me?.alias ? me.alias : (me?.name || '').split(' ')[0]);
 
 /**
- * Pantalla de ENTRADA: la app siempre abre aquí (aunque la sesión siga guardada).
- * • Sin seguridad: botón "Entrar".
- * • Con seguridad: pide código, patrón o huella.
- * Además vuelve a pedir la seguridad si la app estuvo en segundo plano más de 1 minuto.
+ * BIENVENIDA: la app siempre abre aquí (la sesión sigue guardada, no se pide Google).
+ * • Sin seguridad: toca en cualquier parte para entrar.
+ * • Con seguridad: patrón o código (con opción de cambiar) y huella si está activa.
  */
 export default function AppLock({ me, children, onSecurity }) {
-  const cfg = getLock(me.id);
   const [locked, setLocked] = useState(() => !entered());
+  const [method, setMethod] = useState(() => primaryMethod(me.id));
   const [error, setError] = useState(false);
   const [tries, setTries] = useState(0);
-  // Recomendar seguridad la primera vez (también si recién inició sesión)
   const [suggest, setSuggest] = useState(() => {
     try {
       return entered() && !getLock(me.id) && !localStorage.getItem(SUGGESTED + me.id);
@@ -137,20 +142,11 @@ export default function AppLock({ me, children, onSecurity }) {
       return false;
     }
   });
+  const methods = lockMethods(me.id);
+  const secured = methods.length > 0;
 
-  useEffect(() => {
-    const onVis = () => {
-      if (document.hidden) markActive();
-      else if (getLock(me.id) && Date.now() - lastActive() > LOCK_AFTER_MS) setLocked(true);
-    };
-    document.addEventListener('visibilitychange', onVis);
-    const t = setInterval(() => !document.hidden && markActive(), 15000);
-    markActive();
-    return () => {
-      document.removeEventListener('visibilitychange', onVis);
-      clearInterval(t);
-    };
-  }, [me.id]);
+  // Mientras la app está abierta NO se vuelve a pedir la bienvenida al volver del segundo plano.
+  // La bienvenida (y el patrón/código/huella) se muestra solo cuando la app se abre de nuevo después de cerrarla.
 
   const ok = () => {
     try {
@@ -161,7 +157,6 @@ export default function AppLock({ me, children, onSecurity }) {
     markActive();
     setLocked(false);
     setTries(0);
-    // Recomendar seguridad la primera vez
     try {
       if (!getLock(me.id) && !localStorage.getItem(SUGGESTED + me.id)) setSuggest(true);
     } catch {
@@ -178,9 +173,14 @@ export default function AppLock({ me, children, onSecurity }) {
     try {
       if (await unlockWithBiometric(me)) ok();
     } catch {
-      fail();
+      /* canceló la huella: puede usar patrón o código */
     }
   };
+  // Si tiene huella activa, se ofrece sola al abrir (también puede usar patrón/código)
+  useEffect(() => {
+    if (locked && methods.includes('bio')) tryBio();
+  }, [locked]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const dismissSuggest = () => {
     try {
       localStorage.setItem(SUGGESTED + me.id, '1');
@@ -199,7 +199,7 @@ export default function AppLock({ me, children, onSecurity }) {
             <div className="prize" onClick={(e) => e.stopPropagation()}>
               <div className="prize-emoji">🔒</div>
               <h2>Protege tu app</h2>
-              <p className="muted">Te recomendamos activar un código, patrón o tu huella para que nadie más pueda entrar a tu cuenta desde este celular.</p>
+              <p className="muted">Te recomendamos activar tu huella, un patrón o un código para que nadie más entre a tu cuenta desde este celular.</p>
               <button
                 className="btn primary block lg"
                 onClick={() => {
@@ -218,38 +218,51 @@ export default function AppLock({ me, children, onSecurity }) {
       </>
     );
 
+  const other = method === 'pattern' && methods.includes('pin') ? 'pin' : method === 'pin' && methods.includes('pattern') ? 'pattern' : null;
   return (
-    <div className="lock-screen">
-      <img src="./wordmark.png" alt="Envia2 express" className="lock-wordmark" />
-      {me.photo ? <img src={me.photo} alt="" className="lock-avatar" referrerPolicy="no-referrer" /> : <div className="lock-avatar initial">{(me.name || '?')[0]}</div>}
-      <h2>Hola, {me.name?.split(' ')[0]}</h2>
-      {!cfg && (
-        <button className="btn enter-btn lg" onClick={ok}>
-          Entrar
-        </button>
+    <div className={`lock-screen welcome ${secured ? '' : 'tap'}`} onClick={secured ? undefined : ok} role={secured ? undefined : 'button'} aria-label={secured ? undefined : 'Entrar'}>
+      <AnimatedLogo size={secured ? 130 : 170} />
+      <WelcomePhoto me={me} />
+      <div className="welcome-text">
+        <span className="welcome-kicker">{greeting()},</span>
+        <h2>¡Bienvenido{me.gender === 'f' ? 'a' : ''} de nuevo, {displayName(me)}!</h2>
+      </div>
+      {!secured && (
+        <>
+          <button className="btn enter-btn lg" onClick={ok}>
+            Entrar
+          </button>
+          <span className="tap-hint">o toca en cualquier parte de la pantalla</span>
+        </>
       )}
-      {cfg && (
-        <p className="muted">
-          {cfg.type === 'pin' ? 'Ingresa tu código' : cfg.type === 'pattern' ? 'Dibuja tu patrón' : 'Desbloquea con tu huella o Face ID'}
-        </p>
-      )}
-      {cfg?.type === 'pin' && <PinPad length={cfg.length || 4} error={error} onDone={async (v) => ((await checkSecret(me.id, v)) ? ok() : fail())} />}
-      {cfg?.type === 'pattern' && <PatternPad error={error} onDone={async (v) => ((await checkSecret(me.id, v)) ? ok() : fail())} />}
-      {cfg?.type === 'bio' && (
-        <button className="btn enter-btn lg" onClick={tryBio}>
-          👆 Entrar con huella / Face ID
-        </button>
+      {secured && method === 'pin' && <PinPad length={4} error={error} onDone={async (v) => ((await checkSecret(me.id, 'pin', v)) ? ok() : fail())} />}
+      {secured && method === 'pattern' && <PatternPad error={error} onDone={async (v) => ((await checkSecret(me.id, 'pattern', v)) ? ok() : fail())} />}
+      {secured && method === 'bio' && <p className="muted">Usa tu huella, rostro o el bloqueo de tu celular.</p>}
+      {secured && (
+        <div className="row gap wrap" style={{ justifyContent: 'center' }}>
+          {other && (
+            <button className="btn ghost sm" onClick={() => setMethod(other)}>
+              {other === 'pin' ? '🔢 Usar código' : '✳️ Usar patrón'}
+            </button>
+          )}
+          {methods.includes('bio') && (
+            <button className="btn ghost sm" onClick={tryBio}>
+              👆 Usar huella
+            </button>
+          )}
+        </div>
       )}
       {tries >= 3 && <div className="alert error sm">Intentos fallidos: {tries}</div>}
       <button
         className="btn ghost sm"
-        onClick={() => {
-          if (cfg && !confirm('Se cerrará la sesión y se quitará el bloqueo de este celular. ¿Continuar?')) return;
+        onClick={(e) => {
+          e.stopPropagation();
+          if (secured && !confirm('Se cerrará la sesión y se quitará la seguridad de este celular. ¿Continuar?')) return;
           clearLock(me.id);
           logout();
         }}
       >
-        {cfg ? '¿Lo olvidaste? Cerrar sesión' : 'Usar otra cuenta'}
+        {secured ? '¿Lo olvidaste? Cerrar sesión' : 'Usar otra cuenta'}
       </button>
     </div>
   );

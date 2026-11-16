@@ -7,6 +7,8 @@ import { whatsappLink, pinMessage } from '../lib/config';
 import NewShipment from './NewShipment';
 import Quote from './Quote';
 import HomeBanner from '../components/HomeBanner';
+import { CompleteProfile } from './Account';
+import { needsFullProfile } from '../lib/store';
 import { useStore, updateShipment, ACTIVE } from '../lib/store';
 import { ConfirmMeeting, MeetingStatus } from './Meeting';
 import { useEta, arrivalClock } from '../lib/useEta';
@@ -20,6 +22,7 @@ export default function ClientApp({ me, view, go }) {
   const mine = useMemo(() => shipments.filter((s) => s.clientId === me.id || s.recipientUid === me.id), [shipments, me.id]);
   const prefill = useRef(null); // datos de la cotización aceptada → formulario de solicitud
 
+  if (view.name === 'new' && needsFullProfile(me)) return <CompleteProfile me={me} go={go} onDone={() => go({ name: 'new' })} />;
   if (view.name === 'new')
     return (
       <NewShipment
@@ -93,7 +96,7 @@ export default function ClientApp({ me, view, go }) {
     <div className="page">
       <div className="hello">
         <div>
-          <h2>Hola, {me.name.split(' ')[0]} 👋</h2>
+          <h2>Hola, {me.alias || (me.name || '').split(' ')[0]} 👋</h2>
           <p className="muted">¿Qué enviamos hoy?</p>
         </div>
       </div>

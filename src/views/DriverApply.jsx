@@ -14,6 +14,26 @@ async function thumb(dataUrl) {
   return compressImage(new File([blob], 's.jpg', { type: 'image/jpeg' }), 200, 0.75, false);
 }
 
+/** Reduce una foto ya comprimida (data URL) a un tamaño menor */
+async function shrink(dataUrl, max, q) {
+  const blob = await (await fetch(dataUrl)).blob();
+  return compressImage(new File([blob], 'f.jpg', { type: 'image/jpeg' }), max, q, false);
+}
+const LIMIT = 850 * 1024; // la nube acepta hasta ~1 MB por solicitud: se deja margen
+const sizeOf = (o) => JSON.stringify(o).length;
+/** Si la solicitud con fotos pesa demasiado, se achican las fotos hasta que entre */
+export async function fitApp(app) {
+  let a = app;
+  for (const [max, q] of [[720, 0.55], [560, 0.5], [420, 0.45]]) {
+    if (sizeOf(a) <= LIMIT) return a;
+    const photos = {};
+    for (const [k, v] of Object.entries(a.photos || {})) photos[k] = v ? await shrink(v, max, q) : v;
+    a = { ...a, photos };
+  }
+  if (sizeOf(a) > LIMIT) throw new Error('Las fotos pesan demasiado. Toma fotos con menos resolución e intenta de nuevo.');
+  return a;
+}
+
 /**
  * Repartidores: llenan sus datos → el administrador revisa → les da un CÓDIGO de ingreso
  * → con el código se activa su cuenta de repartidor.
@@ -108,7 +128,7 @@ export async function submitDraftIfAny(me) {
     clearDraft();
     return false;
   }
-  await submitDriverApplication(me, d);
+  await submitDriverApplication(me, await fitApp(d)); // si falla, el borrador queda guardado para reintentar
   clearDraft();
   return true;
 }
@@ -155,9 +175,20 @@ export function ApplyForm({ me, go, onDraft, onBack, initial, onSave }) {
     ].filter(([ok]) => !ok);
     if (need.length) return setErr('Falta: ' + need.map((n) => n[1]).join(' · '));
     setBusy(true);
-    const app = { ...f, plate: f.plate.toUpperCase(), photos, selfieThumb: await thumb(photos.selfie) };
+    setErr('');
+    let app;
+    try {
+      app = await fitApp({ ...f, plate: f.plate.toUpperCase(), photos, selfieThumb: await thumb(photos.selfie) });
+    } catch (e2) {
+      setBusy(false);
+      return setErr(e2.message);
+    }
     if (onSave) {
-      await onSave(app);
+      try {
+        await onSave(app);
+      } catch (e2) {
+        setErr(e2.message || 'No se pudo guardar. Intenta de nuevo.');
+      }
       setBusy(false);
       return;
     }
@@ -172,7 +203,13 @@ export function ApplyForm({ me, go, onDraft, onBack, initial, onSave }) {
       setBusy(false);
       return onDraft(app);
     }
-    await submitDriverApplication(me, app);
+    try {
+      await submitDriverApplication(me, app);
+      clearDraft();
+    } catch (e2) {
+      setBusy(false);
+      return setErr(e2.message || 'No se pudo enviar la solicitud. Revisa tu internet e intenta de nuevo.');
+    }
     setBusy(false);
     go({ name: 'driver-apply' });
   };
@@ -288,7 +325,7 @@ export function ApplyForm({ me, go, onDraft, onBack, initial, onSave }) {
       </label>
       {err && <div className="alert error">{err}</div>}
       <button className="btn primary block lg" disabled={busy}>
-        {busy ? 'Guardando…' : onSave ? 'Guardar cambios' : 'Enviar solicitud al administrador'}
+        {busy ? 'Enviando… espera la confirmación' : onSave ? 'Guardar cambios' : 'Enviar solicitud al administrador'}
       </button>
     </form>
   );

@@ -6,6 +6,41 @@
 
 ---
 
+## Entrega 4.5 (ZIP) — 16 nov 2026 · app versión 1.0.0 · sin cambios de reglas
+
+**Bienvenida**
+- Vuelve la **foto del usuario** (la de Google si entró con Google; si no tiene foto, su inicial) junto al logo animado y el saludo.
+- **Volver del segundo plano ya no lleva a la primera pantalla**: se quitó el re-bloqueo por tiempo. La bienvenida (con patrón/código/huella si están activos) aparece solo al **abrir la app de nuevo después de cerrarla**, y siempre entra a **Inicio**.
+
+**Solicitud de repartidor (corrección)**
+- Problema encontrado: el envío fallaba **en silencio** (las 5 fotos podían pasar el límite de 1 MB por documento de la nube, o la cuenta aún no estaba creada) y la app abría el formulario cada vez que se entraba porque el borrador seguía guardado.
+- Ahora: las fotos se **achican automáticamente** hasta que la solicitud entre; el envío **espera la confirmación** de la nube y, si falla, muestra el motivo (sin internet, señal débil, permisos, fotos pesadas). El borrador solo se borra cuando llegó bien.
+- Ya **no se abre el formulario solo** al entrar a la app.
+
+**Configuración → Trabajar como repartidor**
+- Ahora está arriba (después de Seguridad), con los **4 pasos** (llenar datos → revisión del administrador → código de autorización → activar), la lista de **requisitos**, el estado de la solicitud y el botón **📤 Enviar ahora** si quedó una solicitud sin enviar.
+
+**Mensajes**
+- El menú de abajo ya no se esconde ni se mueve: la conversación se desplaza **por dentro** de su recuadro (antes se movía toda la pantalla al llegar un mensaje); las respuestas rápidas se deslizan de lado y no ensanchan la pantalla.
+
+---
+
+## Entrega 4.4 (ZIP) — 16 nov 2026 · app versión 1.0.0 · sin cambios de reglas
+
+**Ingreso**
+- Pantalla de ingreso estilo app: **logo completo animado**, *Continuar con Google*, *Entrar con mi usuario* (**alias** o correo + contraseña, crear cuenta, recuperar), *Entrar como invitado*. Ya **no pregunta cliente o repartidor**: todos entran como cliente; "¿Quieres ser repartidor? Postula aquí" abajo.
+- **Invitado**: puede mirar y cotizar; para **hacer un envío** debe completar nombre y celular (recomendado vincular con Google sin perder nada).
+- **Alias** (nombre de usuario): en el registro, en el perfil y en los saludos.
+- **Para que no pida Google otra vez**: inicio de sesión por el dominio propio (proxy `/__/auth`, variable `VITE_AUTH_PROXY`), el navegador guarda los datos de forma permanente, y aviso para abrir en Chrome si se entra desde WhatsApp/Facebook.
+
+**Bienvenida (cada vez que se abre la app)**
+- Logo completo con movimiento (la moto "avanza", líneas de velocidad y brillo), saludo según la hora: "Buenas tardes, ¡Bienvenido de nuevo, ana!".
+- Sin seguridad: **toca en cualquier parte** para entrar. Con seguridad: pide el método configurado.
+
+**Seguridad**
+- **Un interruptor** Habilitada / Deshabilitada. Al habilitar se eligen **uno, dos o los tres** métodos: **huella / bloqueo del celular** (usa la huella, rostro, patrón o PIN que ya tiene el teléfono), **patrón** y **código**.
+- Al entrar: patrón (o código) con botón **"Usar código" / "Usar patrón"**; si la huella está activa se ofrece sola y también hay botón "Usar huella".
+
 ## Entrega 4.3 (ZIP) — 16 nov 2026 · app versión 1.0.0 · ⚠️ reglas de Firebase actualizadas
 
 **Entrada**

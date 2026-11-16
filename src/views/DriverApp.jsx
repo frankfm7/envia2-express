@@ -225,7 +225,7 @@ function DriverHomeInner({ me, shipments, jobs, go, tracker, section = 'home' })
       <HomeBanner role="driver" go={go} />
       <div className="card online-card">
         <div>
-          <h2>Hola, {me.name.split(' ')[0]} 🛵</h2>
+          <h2>Hola, {me.alias || me.name.split(' ')[0]} 🛵</h2>
           {me.badge && <span className="tag badge-gold">🏆 {me.badge}</span>}
           <div className="muted sm">
             {me.vehicle} · {me.plate || 'sin placas'}

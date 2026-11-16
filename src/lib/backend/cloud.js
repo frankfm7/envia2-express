@@ -3,7 +3,7 @@
 //  - Firestore con caché sin conexión: si no hay señal, todo (firmas, fotos,
 //    estados) se guarda en el celular y se sube solo cuando vuelve internet.
 import { initializeApp } from 'firebase/app';
-import { initializeAuth, indexedDBLocalPersistence, browserLocalPersistence, browserPopupRedirectResolver, GoogleAuthProvider, signInWithEmailAndPassword, createUserWithEmailAndPassword, sendPasswordResetEmail, updateProfile, signInWithPopup, signInWithRedirect, getRedirectResult, onAuthStateChanged, signOut, RecaptchaVerifier, signInWithPhoneNumber } from 'firebase/auth';
+import { initializeAuth, indexedDBLocalPersistence, browserLocalPersistence, browserPopupRedirectResolver, GoogleAuthProvider, signInWithEmailAndPassword, createUserWithEmailAndPassword, sendPasswordResetEmail, updateProfile, signInWithPopup, signInWithRedirect, getRedirectResult, onAuthStateChanged, signOut, RecaptchaVerifier, signInWithPhoneNumber, signInAnonymously, linkWithPopup, linkWithRedirect } from 'firebase/auth';
 import {
   initializeFirestore,
   persistentLocalCache,
@@ -48,7 +48,8 @@ const dec = (v) => {
 export function createCloudBackend(ctx) {
   const app = initializeApp({
     apiKey: env.VITE_FIREBASE_API_KEY,
-    authDomain: env.VITE_FIREBASE_AUTH_DOMAIN,
+    // Con VITE_AUTH_PROXY=true el inicio de sesión usa el dominio propio (evita que se pierda la sesión)
+    authDomain: env.VITE_AUTH_PROXY === 'true' ? location.host : env.VITE_FIREBASE_AUTH_DOMAIN,
     projectId: env.VITE_FIREBASE_PROJECT_ID,
     appId: env.VITE_FIREBASE_APP_ID,
   });
@@ -161,12 +162,19 @@ export function createCloudBackend(ctx) {
       return setSync({ ready: true });
     }
     userUid = u.uid;
-    const base = { userId: u.uid, email: u.email, name: u.displayName, photo: u.photoURL, phone: u.phoneNumber || '', isAdminEmail: ADMIN_EMAILS.includes((u.email || '').toLowerCase()) };
+    const base = { userId: u.uid, email: u.email, name: u.displayName, photo: u.photoURL, phone: u.phoneNumber || '', isAnonymous: u.isAnonymous, isAdminEmail: ADMIN_EMAILS.includes((u.email || '').toLowerCase()) };
     // El perfil se lee de la caché local primero (funciona sin señal).
     unsubs.push(
       onSnapshot(
         doc(db, 'users', u.uid),
         (d) => {
+          if (!d.exists() && u.isAnonymous && !d.metadata.fromCache) {
+            // Invitado: se crea su perfil básico sin preguntar nada (completará sus datos al pedir)
+            setDoc(doc(db, 'users', u.uid), { name: 'Invitado', phone: '', email: '', photo: '', role: 'client', isGuest: true, online: false, approved: true, driverStatus: 'none', addresses: [], createdAt: Date.now() }).catch(() => {});
+            ctx.setSession(base);
+            setSync({ ready: true });
+            return;
+          }
           if (!d.exists()) {
             // Si el perfil aún no llegó de la caché, NO mostrar la pantalla de Google:
             // la sesión sigue abierta; se muestra "Cargando tu cuenta…" hasta que llegue del servidor.
@@ -189,6 +197,22 @@ export function createCloudBackend(ctx) {
 
   const ref = (col, id) => doc(db, col, id);
   const swallow = (p) => p.catch((e) => console.warn('Firestore write', e.code || e));
+  const strict = (p) => {
+    if (!navigator.onLine) {
+      p.catch(() => {});
+      return Promise.reject(new Error('Necesitas internet para enviar tu solicitud. Conéctate e intenta de nuevo.'));
+    }
+    return Promise.race([
+      p.catch((e) => {
+        console.warn('Firestore write', e.code || e);
+        if (e.code === 'permission-denied') throw new Error('La nube rechazó el envío (permisos). Cierra sesión, vuelve a entrar e intenta de nuevo.');
+        if (e.code === 'invalid-argument' || /size|exceeds/i.test(e.message || '')) throw new Error('Las fotos pesan demasiado. Vuelve a tomarlas e intenta de nuevo.');
+        if (e.code === 'not-found') throw new Error('Tu cuenta aún se está creando. Espera unos segundos e intenta de nuevo.');
+        throw new Error('No se pudo enviar: ' + (e.code || e.message || 'error de conexión'));
+      }),
+      new Promise((_, rej) => setTimeout(() => rej(new Error('La señal está muy débil y no se pudo confirmar el envío. Intenta de nuevo con mejor internet.')), 30000)),
+    ]);
+  };
 
   return {
     put: (col, id, data) => swallow(setDoc(ref(col, id), enc({ ...data, id }))),
@@ -203,6 +227,13 @@ export function createCloudBackend(ctx) {
       return swallow(b.commit());
     },
     remove: (col, id) => swallow(deleteDoc(ref(col, id))),
+    // Escrituras que SÍ deben llegar a la nube (avisan si fallan, no se pierden en silencio)
+    async putStrict(col, id, data) {
+      await strict(setDoc(ref(col, id), enc({ ...data, id })));
+    },
+    async patchStrict(col, id, fields) {
+      await strict(updateDoc(ref(col, id), enc(fields)));
+    },
     async accept(id, fields, ev) {
       if (!navigator.onLine) throw new Error('Necesitas señal para aceptar un envío (así dos repartidores no toman la misma caja).');
       return runTransaction(db, async (tx) => {
@@ -248,6 +279,23 @@ export function createCloudBackend(ctx) {
       const provider = new GoogleAuthProvider();
       provider.setCustomParameters({ prompt: 'select_account' });
       return this.loginWith(provider);
+    },
+    /** Entrar como invitado (cuenta anónima de Firebase, gratis) */
+    async loginGuest() {
+      await signInAnonymously(auth);
+    },
+    /** El invitado completa su cuenta con Google (conserva sus pedidos) */
+    async upgradeGuestGoogle() {
+      const provider = new GoogleAuthProvider();
+      provider.setCustomParameters({ prompt: 'select_account' });
+      try {
+        await linkWithPopup(auth.currentUser, provider);
+      } catch (e) {
+        if (e.code === 'auth/popup-blocked') return linkWithRedirect(auth.currentUser, provider);
+        throw e;
+      }
+      await auth.currentUser.reload();
+      return { email: auth.currentUser.email, name: auth.currentUser.displayName, photo: auth.currentUser.photoURL };
     },
     /** Entrar con usuario (correo + contraseña) — gratis */
     async loginEmail(email, password) {

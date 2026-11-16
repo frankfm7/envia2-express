@@ -8,7 +8,7 @@ Orden recomendado:
                                      4. Base de datos (Firebase) ◄─┘  (opcional al inicio: sin ella funciona en modo demo)
 ```
 
-> **Versión:** la app es la **versión 1.0.0** y se queda así hasta que se decida un cambio grande. Los ZIP que recibes se numeran aparte (`envia2-express-v4.3.zip`, `-v3`…) solo para saber cuál es el más nuevo. Ver `CHANGELOG.md`.
+> **Versión:** la app es la **versión 1.0.0** y se queda así hasta que se decida un cambio grande. Los ZIP que recibes se numeran aparte (`envia2-express-v4.4.zip`, `-v3`…) solo para saber cuál es el más nuevo. Ver `CHANGELOG.md`.
 
 ---
 
@@ -27,7 +27,7 @@ git --version
 
 Si ambos muestran un número de versión, está listo.
 
-4. Descomprime **envia2-express-v4.3.zip**, por ejemplo en el Escritorio. Queda la carpeta `envia2-express`.
+4. Descomprime **envia2-express-v4.4.zip**, por ejemplo en el Escritorio. Queda la carpeta `envia2-express`.
 
 ---
 
@@ -105,7 +105,7 @@ cd C:\Users\TU_USUARIO\Desktop\envia2-express
 git add .
 ```
 ```bash
-git commit -m "Actualizacion 4.3: entrada, mensajes, promociones"
+git commit -m "Actualizacion 4.4: ingreso, seguridad, bienvenida"
 ```
 ```bash
 git push
@@ -162,11 +162,30 @@ La app **ya trae lista la conexión a Firebase** (Google): plan gratis sin tarje
    > ⚠️ Cada vez que recibas un ZIP que diga "reglas actualizadas" en el CHANGELOG, vuelve a pegar y publicar `firestore.rules` (la 4 y la 4.1 las cambiaron).
 6. *Authentication → Settings → Dominios autorizados* → **Agregar dominio** → `envia2-express.netlify.app` (tu dominio de Netlify, sin `https://`).
 
+### ✅ Configuración necesaria desde la 4.4 (hazlo una vez)
+
+**1. Activar los 3 tipos de ingreso** — Firebase → **Authentication → Sign-in method**:
+- **Google** (ya lo tienes).
+- **Correo electrónico/contraseña** → Habilitar (para "Entrar con mi usuario" con alias o correo).
+- **Anónimo** → Habilitar (para "Entrar como invitado").
+
+**2. Que NO vuelva a pedir Google** (inicio de sesión por tu propio dominio):
+1. Netlify → tu sitio → *Site configuration → Environment variables* → agrega `VITE_AUTH_PROXY` = `true`.
+2. Google Cloud: https://console.cloud.google.com → elige tu proyecto → **APIs y servicios → Credenciales** → en *ID de clientes de OAuth 2.0* abre **"Web client (auto created by Google Service)"** → en **URIs de redireccionamiento autorizados** → *Agregar URI* → `https://envia2-express.netlify.app/__/auth/handler` (cambia por tu dominio) → **Guardar**.
+3. En **Orígenes de JavaScript autorizados** de ese mismo cliente agrega `https://envia2-express.netlify.app`.
+4. Netlify → *Deploys → Trigger deploy*. Espera 5 minutos.
+5. En tu celular: **Cerrar sesión una vez** y vuelve a entrar con Google. Desde ahí ya no debería pedirlo.
+
+**3. Abrir siempre en Chrome o como app instalada**: si abres el enlace **dentro de WhatsApp o Facebook**, ese navegador borra la sesión y Google no deja entrar. La app muestra un aviso con el botón "Abrir en Chrome". Lo mejor: Chrome → ⋮ → **Instalar aplicación**.
+
+**4. Si aun así se cierra cada hora**: revisa la clave de API (sección "Si la app pide iniciar sesión otra vez cada hora").
+
 ### 👤 Activar "Entrar con mi usuario" (correo y contraseña, gratis)
 
 1. Firebase → **Authentication → Sign-in method** (Método de acceso) → **Agregar proveedor nuevo** → **Correo electrónico/contraseña**.
 2. Activa el primer interruptor (**Correo electrónico/contraseña**) → **Guardar**. (El segundo, "vínculo por correo", no hace falta.)
-3. Listo: en la app aparecen **"Ya tengo usuario"**, **"Crear cuenta"** y **"¿Olvidaste tu contraseña?"** (Firebase envía gratis el correo para cambiarla).
+3. Listo: en "Entrar con mi usuario" se puede entrar con **alias** (ej. `ana.flores`) **o correo** + contraseña, crear cuenta y recuperar la contraseña por correo (gratis).
+   - Quien se registra **solo con alias** (sin correo) no puede recuperar su contraseña por correo: que te escriba a soporte; tú puedes borrar su usuario en Firebase → Authentication para que se registre otra vez.
 4. Opcional: en *Authentication → Templates* (Plantillas) puedes poner el correo de recuperación en español y con el nombre de tu negocio.
 
 ### 📱 (Opcional, con costo) Ingreso con número de celular

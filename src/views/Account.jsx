@@ -3,8 +3,8 @@ import MapView from '../components/MapView';
 import { AddressInput } from '../components/Common';
 import { TariffCard } from '../components/Tariff';
 import { PatternPad, PinPad } from '../components/AppLock';
-import { updateUser, logout, allowedRoles, getViewRole, setViewRole, ROLE_LABEL, saveAddress, deleteAddress, CLOUD } from '../lib/store';
-import { getLock, setLock, clearLock } from '../lib/lock';
+import { updateUser, logout, allowedRoles, getViewRole, setViewRole, ROLE_LABEL, saveAddress, deleteAddress, CLOUD, cleanAlias, upgradeGuestGoogle } from '../lib/store';
+import { getLock, setLockMethod, removeLockMethod, clearLock, lockMethods, METHOD_LABEL } from '../lib/lock';
 import { biometricAvailable, biometricConfirm, compressImage } from '../lib/proof';
 import { reverseGeocode } from '../lib/geo';
 import { APP_VERSION, BUSINESS_NAME, whatsappLink } from '../lib/config';
@@ -13,6 +13,7 @@ import { checkCode } from '../lib/offers';
 import { CONDITIONS } from '../lib/tariff';
 import { useSettings } from '../lib/store';
 import { WhatsAppIcon } from '../components/Common';
+import { loadDraft, submitDraftIfAny } from './DriverApply';
 
 /** Foto de perfil (Google) o inicial del nombre */
 export function Avatar({ me, size = 36 }) {
@@ -54,9 +55,10 @@ export function RoleSwitch({ me, go }) {
 export function ProfilePage({ me, go }) {
   const [name, setName] = useState(me.name || '');
   const [phone, setPhone] = useState(me.phone || '');
+  const [alias, setAlias] = useState(me.alias || '');
   const [saved, setSaved] = useState(false);
   const save = () => {
-    updateUser(me.id, { name: name.trim(), phone: phone.replace(/[^\d+]/g, '') });
+    updateUser(me.id, { name: name.trim(), phone: phone.replace(/[^\d+]/g, ''), alias: cleanAlias(alias) || null });
     setSaved(true);
     setTimeout(() => setSaved(false), 1500);
   };
@@ -69,6 +71,8 @@ export function ProfilePage({ me, go }) {
           <input type="file" accept="image/*" hidden onChange={async (e) => e.target.files?.[0] && updateUser(me.id, { photo: await compressImage(e.target.files[0], 320, 0.8, false) })} />
         </label>
         <h2>{me.name}</h2>
+        {me.alias && <div className="muted">@{me.alias}</div>}
+        {me.isGuest && <GuestUpgrade me={me} />}
         <div className="muted sm">{me.email || me.phone}</div>
         <span className="badge" style={{ '--c': '#1d4ed8' }}>
           {ROLE_LABEL[me.role]}
@@ -86,6 +90,10 @@ export function ProfilePage({ me, go }) {
         <div className="field">
           <label>Nombre</label>
           <input value={name} onChange={(e) => setName(e.target.value)} />
+        </div>
+        <div className="field">
+          <label>Alias (cómo te saludamos)</label>
+          <input value={alias} onChange={(e) => setAlias(cleanAlias(e.target.value))} placeholder="ej. ana" />
         </div>
         <div className="field">
           <label>Celular / WhatsApp</label>
@@ -116,84 +124,118 @@ export function ProfilePage({ me, go }) {
 
 // ─────────────────────────────────────────────────────────────────────────────
 function LockSetup({ me, onDone }) {
-  const cur = getLock(me.id);
   const [bio, setBio] = useState(false);
-  const [mode, setMode] = useState(null); // 'pin' | 'pattern'
+  const [mode, setMode] = useState(null); // configurando 'pin' | 'pattern'
   const [first, setFirst] = useState(null);
   const [msg, setMsg] = useState('');
+  const [, refresh] = useState(0);
   useEffect(() => {
     biometricAvailable().then(setBio);
   }, []);
-
-  const finish = async (type, secret) => {
-    await setLock(me.id, type, secret);
-    setMode(null);
-    setFirst(null);
-    setMsg('✔ Bloqueo activado');
-    onDone();
+  const methods = lockMethods(me.id);
+  const enabled = methods.length > 0;
+  const [wantOn, setWantOn] = useState(enabled);
+  const changed = () => {
+    refresh((x) => x + 1);
+    onDone?.();
   };
+
   const step = (type) => async (v) => {
     if (type === 'pattern' && v.split('-').length < 4) return setMsg('Une al menos 4 puntos');
     if (!first) {
       setFirst(v);
       setMsg(type === 'pin' ? 'Repite el código' : 'Dibuja el patrón otra vez');
-    } else if (first === v) finish(type, v);
-    else {
+    } else if (first === v) {
+      await setLockMethod(me.id, type, v);
+      setMode(null);
+      setFirst(null);
+      setMsg(`✔ ${METHOD_LABEL[type]} activado`);
+      changed();
+    } else {
       setFirst(null);
       setMsg('No coincide, empieza de nuevo');
     }
   };
 
-  if (mode === 'pin')
+  if (mode)
     return (
       <div className="center">
-        <p>{msg || 'Elige un código de 4 dígitos'}</p>
-        <PinPad length={4} onDone={step('pin')} />
-        <button className="btn ghost sm" onClick={() => (setMode(null), setFirst(null), setMsg(''))}>
-          Cancelar
-        </button>
-      </div>
-    );
-  if (mode === 'pattern')
-    return (
-      <div className="center">
-        <p>{msg || 'Dibuja tu patrón (mínimo 4 puntos)'}</p>
-        <PatternPad onDone={step('pattern')} />
+        <p>{msg || (mode === 'pin' ? 'Elige un código de 4 dígitos' : 'Dibuja tu patrón (mínimo 4 puntos)')}</p>
+        {mode === 'pin' ? <PinPad length={4} onDone={step('pin')} /> : <PatternPad onDone={step('pattern')} />}
         <button className="btn ghost sm" onClick={() => (setMode(null), setFirst(null), setMsg(''))}>
           Cancelar
         </button>
       </div>
     );
 
-  const type = cur?.type || 'none';
-  const opt = (k, label, onClick, disabled) => (
-    <button className={`lock-opt ${type === k ? 'on' : ''}`} onClick={onClick} disabled={disabled}>
-      {label}
-    </button>
-  );
-  return (
-    <div>
-      <div className="lock-opts">
-        {opt('none', '🔓 Sin bloqueo', () => (clearLock(me.id), setMsg('Bloqueo desactivado'), onDone()))}
-        {opt('pin', '🔢 Código', () => (setMode('pin'), setMsg('')))}
-        {opt('pattern', '✳️ Patrón', () => (setMode('pattern'), setMsg('')))}
-        {opt(
-          'bio',
-          '👆 Huella / Face ID',
-          async () => {
-            try {
-              await biometricConfirm(me, `activar-bloqueo|${Date.now()}`);
-              finish('bio');
-            } catch {
-              setMsg('No se pudo verificar la huella');
-            }
-          },
-          !bio
+  const row = (k, icon, desc, onSet, available = true) => {
+    const on = methods.includes(k);
+    return (
+      <div className={`lock-method ${on ? 'on' : ''}`}>
+        <span className="lock-m-icon">{icon}</span>
+        <span className="grow">
+          <b>{METHOD_LABEL[k]}</b>
+          <div className="muted sm">{available ? desc : 'Este celular o navegador no lo permite'}</div>
+        </span>
+        {on ? (
+          <span className="row gap">
+            {k !== 'bio' && (
+              <button className="btn ghost sm" onClick={onSet}>
+                Cambiar
+              </button>
+            )}
+            <button className="btn ghost danger sm" onClick={() => (removeLockMethod(me.id, k), changed())}>
+              Quitar
+            </button>
+          </span>
+        ) : (
+          <button className="btn sm primary" disabled={!available} onClick={onSet}>
+            Activar
+          </button>
         )}
       </div>
-      {!bio && <p className="muted sm">La huella / Face ID funciona en el enlace https (Netlify) y en teléfonos que la tengan configurada.</p>}
+    );
+  };
+
+  return (
+    <div className="lock-setup">
+      <label className="switch">
+        <input
+          type="checkbox"
+          checked={enabled || wantOn}
+          onChange={(e) => {
+            if (e.target.checked) setWantOn(true);
+            else {
+              if (enabled && !confirm('¿Deshabilitar la seguridad de ingreso?')) return;
+              clearLock(me.id);
+              setWantOn(false);
+              setMsg('Seguridad deshabilitada');
+              changed();
+            }
+          }}
+        />
+        <span />
+        <b>{enabled ? 'Habilitada' : wantOn ? 'Elige al menos un método' : 'Deshabilitada'}</b>
+      </label>
+      {(enabled || wantOn) && (
+        <div className="lock-methods">
+          <p className="muted sm">Puedes activar uno, dos o los tres. Al entrar podrás usar cualquiera.</p>
+          {row('bio', '👆', 'Usa la huella, el rostro o el patrón/PIN que ya tiene tu celular', async () => {
+            try {
+              await biometricConfirm(me, `activar-bloqueo|${Date.now()}`);
+              await setLockMethod(me.id, 'bio');
+              setMsg('✔ Huella / bloqueo del celular activado');
+              changed();
+            } catch {
+              setMsg('No se pudo verificar. Inténtalo otra vez.');
+            }
+          }, bio)}
+          {row('pattern', '✳️', 'Dibuja un patrón de puntos', () => (setMode('pattern'), setMsg('')))}
+          {row('pin', '🔢', 'Un código de 4 dígitos', () => (setMode('pin'), setMsg('')))}
+        </div>
+      )}
       {msg && <p className="sm">{msg}</p>}
-      <p className="muted sm">El bloqueo se pide al abrir la app y al volver después de 1 minuto. Solo aplica en este celular.</p>
+      <p className="muted sm">Se pide al abrir la app y al volver después de 1 minuto. Solo aplica en este celular.</p>
     </div>
   );
 }
@@ -214,6 +256,90 @@ function Section({ id, icon, title, sub, open, setOpen, children, onClick, badge
       </button>
       {isOpen && !onClick && <div className="set-body">{children}</div>}
     </div>
+  );
+}
+
+const DRIVER_REQS = [
+  'Carnet de identidad vigente (fotos adelante y atrás)',
+  'Una selfie con la cara visible',
+  'Vehículo propio (moto, auto, camioneta o bicicleta) con foto donde se vea la placa',
+  'Licencia de conducir (opcional, recomendada)',
+  'Celular con internet y GPS',
+  '2 números de confianza (familiar o amigo)',
+];
+
+/** Configuración → Trabajar como repartidor: requisitos, pasos y estado de la solicitud */
+function DriverSection({ me, go, ds, P }) {
+  const approved = me.role === 'driver' && me.approved;
+  const [draft, setDraft] = useState(() => !approved && !['pending', 'code_sent'].includes(ds) && !!loadDraft());
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState('');
+  const sendDraft = async () => {
+    setBusy(true);
+    setMsg('');
+    try {
+      await submitDraftIfAny(me);
+      setDraft(false);
+      setMsg('✅ Solicitud enviada al administrador.');
+    } catch (e) {
+      setMsg('✖ ' + (e.message || 'No se pudo enviar. Intenta de nuevo.'));
+    }
+    setBusy(false);
+  };
+  const step = { none: 1, rejected: 1, pending: 2, code_sent: 3 }[ds] || 1;
+  const sub = approved ? 'Ver y actualizar' : draft ? 'Solicitud sin enviar' : ds === 'pending' ? 'Solicitud en revisión' : ds === 'code_sent' ? 'Ingresa tu código' : 'Requisitos y solicitud';
+  return (
+    <Section id="driver" icon="🛵" title={approved ? 'Mis datos de repartidor' : 'Trabajar como repartidor'} sub={sub} badge={draft ? 'Pendiente' : ds === 'code_sent' ? 'Código' : null} {...P}>
+      {approved ? (
+        <button className="btn" onClick={() => go({ name: 'driver-apply' })}>
+          📝 Ver / actualizar mis datos
+        </button>
+      ) : (
+        <>
+          <ol className="driver-steps sm">
+            {['Llena tus datos y requisitos', 'El administrador revisa tu solicitud', 'Recibes tu código de autorización', 'Escribes el código y quedas activo'].map((t, i) => (
+              <li key={t} className={i + 1 < step ? 'done' : i + 1 === step ? 'now' : ''}>
+                {t}
+              </li>
+            ))}
+          </ol>
+          {(ds === 'none' || ds === 'rejected') && (
+            <details className="sm">
+              <summary>
+                <b>Requisitos</b>
+              </summary>
+              <ul>
+                {DRIVER_REQS.map((r) => (
+                  <li key={r}>{r}</li>
+                ))}
+              </ul>
+            </details>
+          )}
+          <p className="sm">
+            {draft
+              ? '📤 Llenaste tu solicitud pero todavía no llegó al administrador.'
+              : ds === 'pending'
+                ? '⏳ Tu solicitud está en revisión. Te avisaremos cuando tengas tu código.'
+                : ds === 'code_sent'
+                  ? '🔑 Te aprobaron: ingresa tu código de autorización.'
+                  : ds === 'rejected'
+                    ? `✖ Solicitud rechazada${me.driverRejectReason ? ': ' + me.driverRejectReason : ''}. Puedes corregir y enviarla de nuevo.`
+                    : 'Llena tus datos y el administrador te dará un código de autorización.'}
+          </p>
+          {msg && <div className={`alert ${msg.startsWith('✅') ? 'success' : 'error'} sm`}>{msg}</div>}
+          <div className="row gap wrap">
+            {draft && (
+              <button className="btn primary" disabled={busy} onClick={sendDraft}>
+                {busy ? 'Enviando…' : '📤 Enviar ahora'}
+              </button>
+            )}
+            <button className={`btn ${draft ? '' : 'primary'}`} onClick={() => go({ name: 'driver-apply' })}>
+              {ds === 'code_sent' ? '🔑 Ingresar código' : ds === 'pending' ? 'Ver solicitud' : draft ? 'Revisar datos' : 'Llenar mi solicitud'}
+            </button>
+          </div>
+        </>
+      )}
+    </Section>
   );
 }
 
@@ -240,10 +366,12 @@ export function SettingsPage({ me, go, openId }) {
       </button>
 
       <div className="set-list">
-        <Section id="security" icon="🔒" title="Seguridad" sub={lock ? `Activada: ${lock.type === 'pin' ? 'código' : lock.type === 'pattern' ? 'patrón' : 'huella / Face ID'}` : 'Recomendado: protege tu app'} badge={lock ? null : 'Recomendado'} {...P}>
+        <Section id="security" icon="🔒" title="Seguridad" sub={lock ? `Habilitada: ${Object.keys(lock.methods).map((m) => METHOD_LABEL[m].split(' ')[0].toLowerCase()).join(', ')}` : 'Deshabilitada · recomendado activarla'} badge={lock ? null : 'Recomendado'} {...P}>
           <p className="muted sm">Pide un código, patrón o huella al entrar a la app.</p>
           <LockSetup me={me} onDone={() => refresh((x) => x + 1)} />
         </Section>
+
+        {me.role !== 'admin' && <DriverSection me={me} go={go} ds={ds} P={P} />}
 
         {allowedRoles(me).length > 1 && (
           <Section id="role" icon="🔁" title="Cambiar de perfil" sub="Cliente, repartidor o administrador" {...P}>
@@ -278,31 +406,6 @@ export function SettingsPage({ me, go, openId }) {
         <Section id="support" icon="💬" title="Asistencia" sub="Ayuda por WhatsApp o chat" {...P}>
           <SupportCard bare go={go} />
         </Section>
-
-        {me.role !== 'admin' && (
-          <Section id="driver" icon="🛵" title={me.role === 'driver' && me.approved ? 'Mis datos de repartidor' : 'Trabajar como repartidor'} sub={me.role === 'driver' && me.approved ? 'Ver y actualizar' : ds === 'pending' ? 'Solicitud en revisión' : ds === 'code_sent' ? 'Ingresa tu código' : 'Envía tu solicitud'} {...P}>
-            {me.role === 'driver' && me.approved ? (
-              <button className="btn" onClick={() => go({ name: 'driver-apply' })}>
-                📝 Ver / actualizar mis datos
-              </button>
-            ) : (
-              <>
-                <p className="sm">
-                  {ds === 'pending'
-                    ? '⏳ Tu solicitud está en revisión.'
-                    : ds === 'code_sent'
-                      ? '🔑 Te aprobaron: ingresa tu código de ingreso.'
-                      : ds === 'rejected'
-                        ? `✖ Solicitud rechazada${me.driverRejectReason ? ': ' + me.driverRejectReason : ''}. Puedes enviarla de nuevo.`
-                        : 'Llena tus datos y el administrador te dará un código de ingreso.'}
-                </p>
-                <button className="btn primary" onClick={() => go({ name: 'driver-apply' })}>
-                  {ds === 'code_sent' ? 'Ingresar código' : ds === 'pending' ? 'Ver solicitud' : 'Quiero ser repartidor'}
-                </button>
-              </>
-            )}
-          </Section>
-        )}
 
         <Section id="tariff" icon="💲" title="Tarifas" sub="Precios por distancia" {...P}>
           <TariffCard forDriver={me.role !== 'client'} open />
@@ -519,6 +622,83 @@ function SupportCard({ go }) {
           <WhatsAppIcon /> Escribir por WhatsApp
         </a>
       )}
+    </div>
+  );
+}
+
+/** Invitado: vincular con Google para no perder sus datos */
+export function GuestUpgrade({ me, compact }) {
+  const [err, setErr] = useState('');
+  if (!me.isGuest || !CLOUD) return null;
+  return (
+    <div className={compact ? '' : 'alert info sm'} style={{ display: 'grid', gap: 6 }}>
+      {!compact && <span>Entraste como invitado. Vincula tu cuenta con Google para no perder tus pedidos ni tus puntos.</span>}
+      <button
+        className="btn google"
+        onClick={async () => {
+          setErr('');
+          try {
+            await upgradeGuestGoogle(me);
+          } catch (e) {
+            setErr(e.code === 'auth/credential-already-in-use' ? 'Esa cuenta de Google ya está registrada: cierra sesión y entra con Google.' : 'No se pudo vincular: ' + (e.code || e.message));
+          }
+        }}
+      >
+        Continuar con Google
+      </button>
+      {err && <span className="sm warn">{err}</span>}
+    </div>
+  );
+}
+
+/** Antes del primer envío: datos completos (recomendado con Google) */
+export function CompleteProfile({ me, go, onDone }) {
+  const [name, setName] = useState(me.name === 'Invitado' ? '' : me.name || '');
+  const [alias, setAlias] = useState(me.alias || '');
+  const [phone, setPhone] = useState(me.phone || '');
+  const [err, setErr] = useState('');
+  return (
+    <div className="page narrow">
+      <div className="card">
+        <h2>📋 Completa tus datos</h2>
+        <p className="muted">Para hacer un envío necesitamos tu nombre y celular: así el repartidor puede coordinar contigo.</p>
+        {me.isGuest && CLOUD && (
+          <>
+            <p className="sm">
+              <b>Recomendado:</b> vincula con Google y tus datos quedan guardados para siempre.
+            </p>
+            <GuestUpgrade me={me} compact />
+            <div className="or">o llénalos aquí</div>
+          </>
+        )}
+        <div className="field">
+          <label>Nombre y apellido</label>
+          <input value={name} onChange={(e) => setName(e.target.value)} autoComplete="name" />
+        </div>
+        <div className="field">
+          <label>Alias (opcional)</label>
+          <input value={alias} onChange={(e) => setAlias(cleanAlias(e.target.value))} placeholder="ej. ana" />
+        </div>
+        <div className="field">
+          <label>Celular / WhatsApp</label>
+          <input value={phone} onChange={(e) => setPhone(e.target.value)} inputMode="tel" placeholder="7 123 4567" autoComplete="tel" />
+        </div>
+        {err && <div className="alert error sm">{err}</div>}
+        <button
+          className="btn primary block lg"
+          onClick={async () => {
+            if (name.trim().length < 3) return setErr('Escribe tu nombre completo');
+            if (phone.replace(/\D/g, '').length < 7) return setErr('Escribe tu celular');
+            await updateUser(me.id, { name: name.trim(), alias: cleanAlias(alias) || null, phone: phone.replace(/[^\d+]/g, '') });
+            onDone?.();
+          }}
+        >
+          Guardar y continuar
+        </button>
+        <button className="btn ghost block" onClick={() => go({ name: 'home' })}>
+          Ahora no
+        </button>
+      </div>
     </div>
   );
 }

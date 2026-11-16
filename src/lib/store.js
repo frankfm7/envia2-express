@@ -78,35 +78,58 @@ export const phoneKey = (p) => String(p || '').replace(/\D/g, '').slice(-9);
 
 // ── Sesión ──────────────────────────────────────────────────────────────────
 /** Modo demo: entrar con nombre y teléfono */
-export async function localLogin({ name, phone, role, vehicle, plate }) {
+export async function localLogin({ name, phone, role, vehicle, plate, alias }) {
   const b = await B();
   const clean = phone.replace(/[^\d+]/g, '');
   let user = data.users.find((u) => phoneKey(u.phone) === phoneKey(clean) && u.role === role);
   if (!user) {
-    user = { id: uid('u_'), name, phone: clean, role, online: false, approved: true, driverStatus: 'none', addresses: [], createdAt: Date.now() };
+    user = { id: uid('u_'), name, phone: clean, alias: cleanAlias(alias) || null, role, online: false, approved: true, driverStatus: 'none', addresses: [], createdAt: Date.now() };
     b.put('users', user.id, user);
   } else b.patch('users', user.id, { name, ...(vehicle && { vehicle }), ...(plate && { plate }) });
   b.localLogin(user.id);
 }
 
 export const loginGoogle = async () => (await B()).loginGoogle();
-export const loginEmail = async (email, password) => (await B()).loginEmail(email, password);
-export const registerEmail = async (email, password, name) => (await B()).registerEmail(email, password, name);
+// "Usuario" del login: un ALIAS (ej. ana.flores) o un correo. Con alias se usa un correo interno.
+export const ALIAS_DOMAIN = 'usuarios.envia2.app';
+export const cleanAlias = (a) => String(a || '').trim().toLowerCase().replace(/^@/, '').replace(/[^a-z0-9._-]/g, '');
+export const userToEmail = (u) => (String(u).includes('@') && !String(u).startsWith('@') ? String(u).trim() : `${cleanAlias(u)}@${ALIAS_DOMAIN}`);
+export const loginEmail = async (user, password) => (await B()).loginEmail(userToEmail(user), password);
+/** Crear cuenta con alias (y correo opcional para recuperar la contraseña) */
+export async function registerEmail(email, password, name, alias) {
+  const b = await B();
+  pendingAlias = cleanAlias(alias) || null;
+  await b.registerEmail(email ? email.trim() : userToEmail(alias), password, name);
+}
+let pendingAlias = null;
+export const takePendingAlias = () => {
+  const a = pendingAlias;
+  pendingAlias = null;
+  return a;
+};
+export const loginGuest = async () => (await B()).loginGuest();
+/** Invitado → cuenta completa con Google (conserva sus datos) */
+export async function upgradeGuestGoogle(me) {
+  const info = await (await B()).upgradeGuestGoogle();
+  await updateUser(me.id, { isGuest: false, email: info.email || '', ...(info.photo && { photo: info.photo }), ...(info.name && me.name === 'Invitado' && { name: info.name }) });
+}
 export const resetPassword = async (email) => (await B()).resetPassword(email);
 
 /** Modo nube: completar perfil después de entrar con Google */
 /** Modo nube: completar perfil después de entrar (Google o celular). Todos entran como CLIENTE;
  *  los repartidores se activan después con el código que da el administrador. */
-export async function saveProfile({ name, phone }) {
+export async function saveProfile({ name, phone, alias }) {
   const b = await B();
   const id = session.userId;
   const isAdmin = session.isAdminEmail;
   b.put('users', id, {
     name,
     phone: phone.replace(/[^\d+]/g, ''),
-    email: session.email || '',
+    email: session.email?.endsWith('@' + ALIAS_DOMAIN) ? '' : session.email || '',
     photo: session.photo || '',
     role: isAdmin ? 'admin' : 'client',
+    alias: cleanAlias(alias) || (session.email?.endsWith('@' + ALIAS_DOMAIN) ? session.email.split('@')[0] : '') || null,
+    isGuest: !!session.isAnonymous,
     online: false,
     approved: true,
     driverStatus: 'none',
@@ -165,9 +188,12 @@ export const deleteAddress = (me, id) => updateUser(me.id, { addresses: (me.addr
 // ── Solicitud para ser repartidor → el administrador da un código de ingreso ──
 export async function submitDriverApplication(me, app) {
   const b = await B();
-  b.put('driverApps', me.id, { ...app, userId: me.id, email: me.email || '', status: 'pending', createdAt: Date.now() });
+  const put = b.putStrict ? b.putStrict.bind(b) : b.put.bind(b);
+  const patch = b.patchStrict ? b.patchStrict.bind(b) : b.patch.bind(b);
+  // Se espera a que la nube CONFIRME cada paso: si algo falla, la persona ve el error (antes se perdía en silencio)
+  await put('driverApps', me.id, { ...app, userId: me.id, email: me.email || '', status: 'pending', createdAt: Date.now() });
   // (El aviso al administrador lo genera su propia app al ver la solicitud pendiente: no se duplica ni se pierde)
-  b.patch('users', me.id, {
+  await patch('users', me.id, {
     driverStatus: 'pending',
     driverApp: { fullName: app.fullName, ci: app.ci, vehicle: app.vehicle, plate: app.plate, sentAt: Date.now() },
   });
@@ -458,3 +484,6 @@ export async function sendDirect(threadId, from, participants, text, toName) {
   b.put('messages', id, { threadId, shipmentId: null, fromId: from.id, fromName: from.name, role: from.role, text, ts: Date.now(), participants: ps, toName: toName || null });
   ps.filter((p) => p !== from.id).forEach((p) => notifyUser(p, threadId, `💬 ${from.name}: ${text}`));
 }
+
+/** ¿Le faltan datos para poder pedir? (invitado o sin celular) */
+export const needsFullProfile = (me) => !!me && (!me.phone || String(me.phone).replace(/\D/g, '').length < 7 || !me.name || me.name === 'Invitado');

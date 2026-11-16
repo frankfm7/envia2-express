@@ -158,10 +158,11 @@ function Thread({ me, go, k, info, onBack, admins, users }) {
   const { messages } = useStore();
   const list = useMemo(() => messages.filter((m) => (m.threadId || m.shipmentId) === k && (m.participants || []).includes(me.id)).sort((a, b) => a.ts - b.ts), [messages, k, me.id]);
   const [text, setText] = useState('');
-  const end = useRef(null);
+  const box = useRef(null);
   const isMine = (m) => m.fromId === me.id && (!m.role || m.role === me.role);
   useEffect(() => {
-    end.current?.scrollIntoView({ block: 'nearest' });
+    // Se baja al último mensaje DENTRO de la conversación (sin mover la pantalla ni el menú de abajo)
+    if (box.current) box.current.scrollTop = box.current.scrollHeight;
     markRead(me.id, k);
   }, [list.length, k, me.id]);
 
@@ -211,7 +212,7 @@ function Thread({ me, go, k, info, onBack, admins, users }) {
           </button>
         )}
       </div>
-      <div className="thread-msgs">
+      <div className="thread-msgs" ref={box}>
         {!list.length && <div className="empty sm">Escribe el primer mensaje 👋</div>}
         {list.map((m, i) => {
           const day = new Date(m.ts).toDateString();
@@ -231,7 +232,6 @@ function Thread({ me, go, k, info, onBack, admins, users }) {
             </div>
           );
         })}
-        <div ref={end} />
       </div>
       <div className="chips">
         {(QUICK[me.role] || QUICK.client).map((q) => (

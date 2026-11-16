@@ -24,6 +24,13 @@ const CLAIM_KEY = 'boxruta:claim';
     history.replaceState(null, '', location.pathname + location.search + '#/home');
   }
 }
+// Al ABRIR la app (no al volver del segundo plano) siempre se empieza en la primera pantalla y luego en Inicio
+try {
+  if (sessionStorage.getItem('envia2:entered') !== '1' && !/^#\/t\//.test(location.hash))
+    history.replaceState(null, '', location.pathname + location.search + '#/home');
+} catch {
+  /* sin almacenamiento */
+}
 const pendingClaim = () => {
   try {
     return JSON.parse(sessionStorage.getItem(CLAIM_KEY));
@@ -163,8 +170,12 @@ export default function App() {
     } catch {
       /* sin almacenamiento */
     }
-    // Solicitud de repartidor llenada antes de iniciar sesión → se envía ahora
-    if (loadDraft()) submitDraftIfAny(me).then(() => go({ name: 'driver-apply' }));
+    // Solicitud de repartidor llenada antes de iniciar sesión → se envía en segundo plano.
+    // Solo se abre la pantalla de solicitud si la persona acaba de iniciar sesión para eso (no en cada apertura).
+    if (loadDraft())
+      submitDraftIfAny(me)
+        .then((sent) => sent && (intent === 'driver' || startedLoggedOut.current) && go({ name: 'driver-apply' }))
+        .catch((e) => console.warn('Solicitud pendiente de envío:', e.message)); // queda en Configuración → "Enviar ahora"
     else if (intent === 'driver' && me.role !== 'driver' && me.role !== 'admin') go({ name: 'driver-apply' });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [me?.id]);
