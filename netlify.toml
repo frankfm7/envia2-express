@@ -6,11 +6,7 @@
 [build.environment]
   NODE_VERSION = "20"
 
-# La app usa rutas con # → cualquier dirección abre index.html
-[[redirects]]
-  from = "/*"
-  to = "/index.html"
-  status = 200
+# Redirecciones: están en public/_redirects (proxy de inicio de sesión /__/auth/* ANTES del fallback de la app).
 
 [[headers]]
   for = "/sw.js"

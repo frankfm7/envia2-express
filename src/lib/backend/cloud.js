@@ -58,9 +58,10 @@ const markRedirect = () => {
 export function createCloudBackend(ctx) {
   const app = initializeApp({
     apiKey: env.VITE_FIREBASE_API_KEY,
-    // El handler de inicio de sesión (/__/auth/handler) lo sirve Firebase en su propio dominio.
-    // NO cambiar a netlify.app: Netlify no tiene esos archivos (daba 404 y pantalla en blanco).
-    authDomain: 'envia2-express.firebaseapp.com',
+    // Opción 3 de Firebase (redirect-best-practices): el inicio de sesión usa el MISMO dominio de la app.
+    // Netlify reenvía /__/auth/* a envia2-express.firebaseapp.com (ver public/_redirects, status 200 = proxy).
+    // Así Chrome/Safari no bloquean la sesión al volver de Google (particionado de almacenamiento).
+    authDomain: 'envia2-express.netlify.app',
     projectId: env.VITE_FIREBASE_PROJECT_ID,
     appId: env.VITE_FIREBASE_APP_ID,
   });

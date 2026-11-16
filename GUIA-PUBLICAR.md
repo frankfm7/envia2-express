@@ -162,14 +162,32 @@ La app **ya trae lista la conexión a Firebase** (Google): plan gratis sin tarje
    > ⚠️ Cada vez que recibas un ZIP que diga "reglas actualizadas" en el CHANGELOG, vuelve a pegar y publicar `firestore.rules` (la 4 y la 4.1 las cambiaron).
 6. *Authentication → Settings → Dominios autorizados* → **Agregar dominio** → `envia2-express.netlify.app` (tu dominio de Netlify, sin `https://`).
 
-### 🔁 Inicio de sesión por REDIRECCIÓN (desde la 4.6, corregido en la 4.7)
+### 🔁 Inicio de sesión por REDIRECCIÓN con proxy same-origin (desde la 4.8 — Opción 3 de Firebase)
 
-> **El login con Google es por REDIRECT (redirección), no por ventana emergente (popup).** Al tocar *Continuar con Google* la app va a Google **en la misma pestaña**, la persona elige su cuenta y Google la **devuelve a la app ya con la sesión iniciada**. **El usuario NO tiene que habilitar ventanas emergentes** ni configurar nada en su celular.
+> **El login con Google es por REDIRECT (redirección), no por ventana emergente.** La app va a Google **en la misma pestaña** y vuelve ya con la sesión. **El usuario NO tiene que habilitar ventanas emergentes** ni configurar nada.
+>
+> **El login usa un proxy same-origin vía `_redirects`** (Opción 3 de https://firebase.google.com/docs/auth/web/redirect-best-practices). Así Chrome (Android) y Safari no pierden la sesión por el *particionado de almacenamiento*.
 
-- El `authDomain` de Firebase es **`envia2-express.firebaseapp.com`** (fijo en `src/lib/backend/cloud.js`). Firebase sirve ahí la página `/__/auth/handler`. **No lo cambies a netlify.app.**
-- Desde la 4.7 **ya no hay proxy en Netlify**: si en Netlify tienes la variable `VITE_AUTH_PROXY`, puedes borrarla (ya no se usa).
-- En Firebase → Authentication → **Dominios autorizados** debe estar `envia2-express.netlify.app`.
-- En Google Cloud → Credenciales → *Web client*: el URI de redireccionamiento `https://envia2-express.firebaseapp.com/__/auth/handler` (Firebase lo pone solo al crear el proyecto).
+Cómo está armado (no hay que tocar nada):
+- `authDomain` = **`envia2-express.netlify.app`** (en `src/lib/backend/cloud.js`).
+- **`public/_redirects`** (Netlify lo lee de la carpeta publicada), en este orden — el proxy SIEMPRE antes del fallback de la app y con **status 200** (proxy transparente, nunca 302):
+  ```
+  /__/auth/* https://envia2-express.firebaseapp.com/__/auth/:splat 200
+  /__/firebase/* https://envia2-express.firebaseapp.com/__/firebase/:splat 200
+  /*  /index.html  200
+  ```
+- El **service worker** (app instalada / sin internet) **no atiende** las direcciones `/__/…` (`navigateFallbackDenylist` en `vite.config.js`). Esta era la causa del 404 de `/__/auth/assets/...` en la 4.6: el service worker devolvía la página de la app en lugar del handler de Firebase.
+- No hay script propio ni variable `VITE_AUTH_PROXY` (si la tienes en Netlify, bórrala).
+
+Configuración (ya hecha, solo verificar):
+- Google Cloud → Credenciales → *Web client*: origen `https://envia2-express.netlify.app` y URI `https://envia2-express.netlify.app/__/auth/handler`.
+- Firebase → Authentication → Dominios autorizados: `envia2-express.netlify.app`.
+
+Para comprobar después de publicar: abre `https://envia2-express.netlify.app/__/auth/handler` en el navegador → debe verse una página en blanco **de Firebase** (no la app ni un 404).
+
+Si sale **"Error 400: redirect_uri_mismatch"**: no es error de configuración, es la caché de Google propagando el URI; espera 2-5 minutos y reintenta.
+
+**Primera vez después de publicar la 4.8:** en cada celular/PC que ya tenía la app abierta, recarga la página una vez (o cierra y abre la app) para que se active el service worker nuevo.
 
 ### ✅ Configuración necesaria desde la 4.4 (hazlo una vez)
 
@@ -178,7 +196,7 @@ La app **ya trae lista la conexión a Firebase** (Google): plan gratis sin tarje
 - **Correo electrónico/contraseña** → Habilitar (para "Entrar con mi usuario" con alias o correo).
 - **Anónimo** → Habilitar (para "Entrar como invitado").
 
-**2. Inicio de sesión con Google**: ver la sección "Inicio de sesión por REDIRECCIÓN" de arriba (desde la 4.7 ya no se usa el proxy de Netlify).
+**2. Inicio de sesión con Google**: ver la sección "Inicio de sesión por REDIRECCIÓN con proxy same-origin" de arriba.
 
 **3. Abrir siempre en Chrome o como app instalada**: si abres el enlace **dentro de WhatsApp o Facebook**, ese navegador borra la sesión y Google no deja entrar. La app muestra un aviso con el botón "Abrir en Chrome". Lo mejor: Chrome → ⋮ → **Instalar aplicación**.
 

@@ -6,6 +6,19 @@
 
 ---
 
+## Entrega 4.8 (ZIP) — 16 nov 2026 · app versión 1.0.0 · sin cambios de reglas ni de datos
+
+**Login con Google: Opción 3 de Firebase (proxy same-origin en Netlify)**
+- Problema de la 4.7: con `authDomain` en firebaseapp.com, Chrome de Android (particionado de almacenamiento) volvía sin sesión → "Google no devolvió la sesión".
+- Causa real del 404 de la 4.6 (`/__/auth/assets/...`): el **service worker** de la PWA respondía `/__/auth/handler` con la página de la app (`navigateFallback`), y esa página pedía sus archivos con ruta relativa → `/__/auth/assets/...` → 404.
+- Ahora:
+  - `authDomain: 'envia2-express.netlify.app'`.
+  - **`public/_redirects`** nuevo: `/__/auth/*` (y `/__/firebase/*`) → `https://envia2-express.firebaseapp.com/...` con **200** (proxy), y después el fallback `/* /index.html 200`. El fallback se pasó de `netlify.toml` a este archivo para que el orden quede garantizado.
+  - Service worker: `navigateFallbackDenylist: [/^\/__\//]` (ya no intercepta las direcciones de inicio de sesión).
+  - Sin script propio ni `VITE_AUTH_PROXY`. Se mantiene `signInWithRedirect` + `getRedirectResult` + `onAuthStateChanged`.
+
+---
+
 ## Entrega 4.7 (ZIP) — 16 nov 2026 · app versión 1.0.0 · sin cambios de reglas ni de datos
 
 **Corrección urgente del login por redirección**

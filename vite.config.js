@@ -33,6 +33,9 @@ export default defineConfig({
       workbox: {
         globPatterns: ['**/*.{js,css,html,svg,png,ico,woff2}'],
         navigateFallback: 'index.html',
+        // /__/auth/… y /__/firebase/… NO son de la app: los sirve Firebase a través del proxy de Netlify (_redirects).
+        // Sin esto, el service worker respondía con index.html y el navegador buscaba /__/auth/assets/… → 404.
+        navigateFallbackDenylist: [/^\/__\//],
         maximumFileSizeToCacheInBytes: 4 * 1024 * 1024,
         runtimeCaching: [
           {
